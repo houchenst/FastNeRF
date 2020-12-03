@@ -13,7 +13,7 @@ import pprint
 
 import matplotlib.pyplot as plt
 
-import run_nerf
+import run_nerf_fast
 
 from load_llff import load_llff_data
 from load_deepvoxels import load_dv_data
@@ -33,7 +33,7 @@ expname = 'fern_example'
 config = os.path.join(basedir, expname, 'config.txt')
 print('Args:')
 print(open(config, 'r').read())
-parser = run_nerf.config_parser()
+parser = run_nerf_fast.config_parser()
 
 weights_name = 'model_200000.npy'
 # weights_name = 'model_000700.npy'
@@ -65,7 +65,7 @@ else:
 # Create nerf model
 
 def new_render():
-    _, render_kwargs_test, start, grad_vars, models = run_nerf.create_nerf(args)
+    _, render_kwargs_test, start, grad_vars, models = run_nerf_fast.create_nerf(args)
 
     bds_dict = {
         'near' : tf.cast(near, tf.float32),
@@ -82,15 +82,17 @@ def new_render():
     render_kwargs_fast['N_importance'] = 128
 
     c2w = np.eye(4)[:3,:4].astype(np.float32) # identity pose matrix
-    test = run_nerf.render(H//down, W//down, focal/down, c2w=c2w, **render_kwargs_fast)
+    test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=c2w, **render_kwargs_fast)
     img = np.clip(test[0],0,1)
     disp = test[1]
     disp = (disp - np.min(disp)) / (np.max(disp) - np.min(disp))
-    return img,disp
+    acc_alpha = test[2]
+    return img,disp,acc_alpha
 
 
 # profile rendering
-cProfile.run('img,disp = new_render()', 'render_stats')
+# cProfile.run('img,disp, acc_alpha = new_render()', 'render_stats')
+img, disp,acc_alpha = new_render()
 
 # show results
 plt.imshow(img)
@@ -106,7 +108,7 @@ p.sort_stats(SortKey.CUMULATIVE).print_stats(20)
 # frames = []
 # for i, c2w in enumerate(render_poses):
 #     if i%8==0: print(i)
-#     test = run_nerf.render(H//down, W//down, focal/down, c2w=c2w[:3,:4], **render_kwargs_fast)
+#     test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=c2w[:3,:4], **render_kwargs_fast)
 #     frames.append((255*np.clip(test[0],0,1)).astype(np.uint8))
     
 # print('done, saving')
@@ -132,7 +134,7 @@ p.sort_stats(SortKey.CUMULATIVE).print_stats(20)
 #         [0,0,0,1],
 #     ], dtype=tf.float32)
     
-#     test = run_nerf.render(H//down, W//down, focal/down, c2w=c2w, **render_kwargs_fast)
+#     test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=c2w, **render_kwargs_fast)
 #     img = np.clip(test[0],0,1)
     
 #     plt.figure(2, figsize=(20,6))
