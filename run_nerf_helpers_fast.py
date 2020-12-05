@@ -4,6 +4,7 @@ import tensorflow as tf
 import numpy as np
 import imageio
 import json
+import random
 
 
 # Misc utils
@@ -197,6 +198,8 @@ def mat_bilinear_interpolation(known, H, W, x_offset, y_offset, gap):
 
     Returns:
         A grid of points, gap distance apart in x and y, interpolated from the known points
+
+    NOTE: No longer used
     '''
 
     num_y = H // gap + (H%gap > y_offset)
@@ -231,11 +234,144 @@ def mat_bilinear_interpolation(known, H, W, x_offset, y_offset, gap):
     return interpolated
 
 
+def weighted_sampling_interpolation(known_z_vals, weights, H, W, x_offset, y_offset, gap, samples, det=False):
+    '''
+    Produces samples for a new ray by drawing from the pdfs of neighboring rays with known
+    pdfs. Number of samples drawn from neighboring pdfs depends on their distance.
+    Arguments:
+        known_z_vals - an array with the z_values of the known pdfs
+        weights      - an array with the weights of the known pdfs
+        H            - height of the image being reconstructed (this method is a subroutine of render())
+        W            - width of the image being reconstructed
+        x_offset     - the x coordinate of the first point being interpolated
+        y_offset     - the y coordinate of the first point being interpolated
+        gap          - the x and y gap between points to interpolate (and the known points)
+        samples      - the total number of samples to draw
+    '''
+
+    num_y = H // gap + (H%gap > y_offset)
+    num_x = W // gap + (W%gap > x_offset)
+    new_shape = (num_y, num_x) + (samples,)
+    interpolated = np.zeros(new_shape)
+
+    vertical = (x_offset == 0)
+    horizontal = (y_offset == 0)
+
+    # duplicate the last row/column of the values if necessary 
+    # (we may want to interpolate somewhere where there aren't four surrounding points)
+    far_bottom = (known_z_vals.shape[0] - 1 < num_y)
+    far_right = (known_z_vals.shape[1] - 1 < num_x)
+
+    # size of the known grid
+    known_y = known_z_vals.shape[0]
+    known_x = known_z_vals.shape[1]
+
+    new_z_shape = (known_y + far_bottom, known_x + far_right) + tuple(known_z_vals.shape[2:])
+    new_weights_shape = (known_y + far_bottom, known_x + far_bottom) + tuple(weights.shape[2:])
+    new_zs = np.zeros(new_z_shape)
+    new_weights = np.zeros(new_weights_shape)
+
+    # fill the new, larger, arrays
+    new_zs[:known_y, :known_x, ...] = known_z_vals
+    new_weights[:known_y, :known_x, ...] = weights
+
+    if far_bottom:
+        new_zs[-1:, :known_x, ...] = known_z_vals[-1:, :, ...]
+        new_weights[-1:, :known_x, ...] = weights[-1:, :, ...]
+    
+    if far_right:
+        new_zs[:known_y, -1:, ...] = known_z_vals[:,-1:, ...]
+        new_weights[:known_y, -1:, ...] = weights[:,-1:, ...]
+
+    if far_bottom and far_right:
+        new_zs[-1:, -1:, ...] = known_z_vals[-1:, -1:, ...]
+        new_weights[-1:, -1:, ...] = weights[-1:, -1:, ...]
+
+    known_z_vals = tf.convert_to_tensor(new_zs, dtype=tf.float32)
+    weights = tf.convert_to_tensor(new_weights, dtype=tf.float32)
+
+
+    # if directly between two points vertically
+    if vertical:
+        top_left = round((1 - y_offset/gap) * samples)
+        bottom_left = round((y_offset/gap) * samples)
+    elif horizontal:
+        top_left = round((1 - x_offset/gap) * samples)
+        top_right = round((x_offset/gap) * samples)
+    else:
+        top_left = int((1 - x_offset/gap) * (1 - y_offset/gap) * samples)
+        top_right = int((x_offset/gap) * (1 - y_offset/gap) * samples)
+        bottom_left = int((1 - x_offset/gap) * (y_offset/gap) * samples)
+        bottom_right = int((x_offset/gap) * (y_offset/gap) * samples)
+
+        print(f'({top_left},{top_right},{bottom_left},{bottom_right})')
+
+        # randomly assign remainders
+        for i in range(samples - top_left - top_right - bottom_left - bottom_right):
+            ray = random.randint(0,3)
+            if ray == 0:
+                top_left += 1
+            elif ray == 1:
+                top_right += 1
+            elif ray == 2:
+                bottom_left += 1
+            elif ray == 3:
+                bottom_right += 1
+
+    # sample the four distributions
+    top_left_samples = sample_pdf(known_z_vals[:-1, :-1, ...], weights[:-1,:-1,...], top_left, det=det)
+    if not vertical:
+        top_right_samples = sample_pdf(known_z_vals[:-1,1:, ...], weights[:-1,1:,...], top_right, det=det)
+    if not horizontal:
+        bottom_left_samples = sample_pdf(known_z_vals[1:, :-1, ...], weights[1:,:-1,...], bottom_left, det=det)
+    if not (vertical or horizontal):
+        bottom_right_samples = sample_pdf(known_z_vals[1:, 1:, ...], weights[1:,1:,...], bottom_right, det=det)
+
+    # combine the samples
+    if vertical:
+        all_points = [top_left_samples, bottom_left_samples]
+    elif horizontal:
+        all_points = [top_left_samples, top_right_samples]
+    else:
+        all_points = [top_left_samples, top_right_samples, bottom_left_samples, bottom_right_samples]
+    combined_samples = tf.sort(tf.concat(all_points, -1), -1)
+    interpolated[:combined_samples.shape[0], :combined_samples.shape[1], ...] = combined_samples
+
+    #This should be taken care of at the beginning now 
+
+    # # if we want to interpolate below the known points
+    # far_bottom = combined_samples.shape[0] < num_y
+    # if far_bottom:
+    #     left = round((1-x_offset/gap) * samples)
+    #     right = round((x_offset/gap) * samples)
+    #     left_samples = sample_pdf(known_z_vals[-1:,:-1, ...], weights[-1:,:-1,...], left, det=det)
+    #     right_samples = sample_pdf(known_z_vals[-1:,1:,...], weights[-1:,1:,...], right, det=det)
+    #     combined_samples = tf.sort(tf.concat([left_samples, right_samples], -1), -1)
+    #     interpolated[-1:, :combined_samples.shape[1], ...] = combined_samples
+
+    # # if we want to interpolate to the right of the known points
+    # far_right = combined_samples.shape[1] < num_x
+    # if far_right:
+    #     top = round((1-y_offset/gap) * samples)
+    #     bottom = round((y_offset/gap) * samples)
+    #     top_samples = sample_pdf(known_z_vals[:-1,-1:, ...], weights[:-1,-1:,...], top, det=det)
+    #     bottom_samples = sample_pdf(known_z_vals[1:,-1:,...], weights[1:,-1:,...], bottom, det=det)
+    #     combined_samples = tf.sort(tf.concat([top_samples, bottom_samples], -1), -1)
+    #     interpolated[:combined_samples.shape[0],-1:,...] = combined_samples
+
+    # # handle far bottom right point if necessary
+    # if far_bottom and far_right:
+    #     interpolated[-1:,-1:,...] = sample_pdf(known_z_vals[-1:,-1:, ...], weights[-1:,-1:, ...], samples, det=det)
+    print(f'returned type {interpolated.dtype}')
+
+    return tf.cast(interpolated, dtype=tf.float32)
+    
+
 
 # Hierarchical sampling helper
 
 def sample_pdf(bins, weights, N_samples, det=False):\
-    # NOTE: had to cast everything to doubles for some reason
+    # NOTE: had to cast a bunch of stuff to tf.double for some reason
 
     weights = tf.cast(weights, dtype=tf.float64)
     # Get pdf

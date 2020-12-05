@@ -64,10 +64,16 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=None):
     def raw2alpha(raw, dists, act_fn=tf.nn.relu): return 1.0 - \
         tf.exp(-act_fn(raw) * dists)
 
+    print(f'third {z_vals.dtype}')
+
     # Compute 'distance' (in time) between each integration time along a ray.
     dists = z_vals[..., 1:] - z_vals[..., :-1]
-
+    print(f'fourth {z_vals.dtype}')
     # The 'distance' from the last integration time is infinity.
+    print("HERE")
+    print(dists.dtype)
+    print(tf.broadcast_to([1e10], dists[..., :1].shape).dtype)
+
     dists = tf.concat(
         [dists, tf.broadcast_to([1e10], dists[..., :1].shape)],
         axis=-1)  # [N_rays, N_samples]
@@ -270,8 +276,8 @@ def render_rays_with_pdf(z_vals_mid, weights, ray_batch, render_info,
     
     #interpolate estimated z mids and weights 
     # TODO: just weight the weights, use all of the z values. 
-    interpolated_z_mids = mat_bilinear_interpolation(z_vals_mid, H, W, x_offset, y_offset, d_factor)
-    interpolated_weights = mat_bilinear_interpolation(weights, H, W, x_offset, y_offset, d_factor)
+    # interpolated_z_mids = mat_bilinear_interpolation(z_vals_mid, H, W, x_offset, y_offset, d_factor)
+    # interpolated_weights = mat_bilinear_interpolation(weights, H, W, x_offset, y_offset, d_factor)
 
     # batch size
     N_rays = ray_batch.shape[0]
@@ -288,10 +294,13 @@ def render_rays_with_pdf(z_vals_mid, weights, ray_batch, render_info,
 
     # Obtain additional integration times to evaluate based on the weights
     # assigned to colors in the coarse model.
-    z_samples = sample_pdf(
-        interpolated_z_mids, interpolated_weights, NUM_SAMPLES, det=(perturb == 0.))
+    # z_samples = sample_pdf(
+    #     interpolated_z_mids, interpolated_weights, NUM_SAMPLES, det=(perturb == 0.))
     # z_samples = tf.stop_gradient(z_samples)
-
+    
+    # Interpolation sampling
+    z_samples = weighted_sampling_interpolation(z_vals_mid, weights, H, W, x_offset, y_offset, d_factor, NUM_SAMPLES, det=(perturb == 0.))
+    print(f"first type: {z_samples.dtype}")
     # Obtain all points to evaluate color, density at.
     # z_vals = tf.sort(tf.concat([z_vals, z_samples], -1), -1)
     print("Z Samples")
@@ -306,6 +315,7 @@ def render_rays_with_pdf(z_vals_mid, weights, ray_batch, render_info,
     viewdirs = tf.reshape(viewdirs, (list([-1]) + list(viewdirs.shape[2:])))
     # also reshape for teh raw2outputs conversion
     z_samples = tf.reshape(z_samples, (list([-1]) + list(z_samples.shape[2:])))
+    print(f'secdond: {z_samples.dtype}')
     rays_d = tf.reshape(rays_d, (list([-1]) + list(rays_d.shape[2:])))
 
 
@@ -521,12 +531,15 @@ def render(H, W, focal,
         if x == 0:
             # print(f'shape: {rays.shape}')
             # print(f'first group: {tf.reshape(rays[0,0], [-1, data_size]).shape}')
+            print(f'first batch {tf.reshape(rays[0], [-1, data_size])}')
             all_ret = batchify_rays(tf.reshape(rays[0], [-1, data_size]), chunk, **kwargs)
         else:
             # keep the hxw structure for interpolation
             x_offset = x%d_factor
             y_offset = x//d_factor
             render_info = [H, W, y_offset, x_offset, d_factor]
+            print(f'\n\n\n\n input types {z_mids.dtype} {weights.dtype}')
+            print(rays.dtype)
             all_ret = render_rays_with_pdf(z_mids, weights, rays[x], render_info, chunk=chunk, **kwargs)
 
         for k in all_ret:
