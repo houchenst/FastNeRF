@@ -182,16 +182,68 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
 
     return rays_o, rays_d
 
+def mat_bilinear_interpolation(known, H, W, x_offset, y_offset, gap):
+    '''
+    Performs bilear interpolation for Z-2 dimensional points, given a set of Z dimensional vectors
+    where the first two dimensions are x and y positions
+    Arguments:
+        known    - the known points arranged in a grid with a distance of size <gap> between
+                   points in the x and y directions. Should start at (0,0)
+        H        - x upper bound for interpolated points
+        W        - y upper bound for interpolated points
+        x_offset - the x index of the first desired point (subsequent points will be spaced by gap)
+        y_offset - the y index of the first desired point (subsequent points will be spaced by gap)
+        gap      - The x and y gap size between points for the known grid and the desired grid of points
+
+    Returns:
+        A grid of points, gap distance apart in x and y, interpolated from the known points
+    '''
+
+    num_y = H // gap + (H%gap > y_offset)
+    num_x = W // gap + (W%gap > x_offset)
+    new_shape = (num_y, num_x) + tuple(known.shape[2:])
+    interpolated = np.zeros(new_shape)
+
+    # interpolate in the x direction
+    x_blend = (1 - x_offset/gap) * known[:, :-1, ...] + (x_offset/gap) * known[:, 1:, ...]
+
+    # now blend in the y direction
+    full_blend = (1 - y_offset/gap) * x_blend[:-1, ...] + (y_offset/gap) * x_blend[1:, ...]
+
+    interpolated[:full_blend.shape[0], :full_blend.shape[1], ...] = full_blend
+
+    # handle points that aren't between four other points
+
+    # bottom row points
+    if num_y > full_blend.shape[0]:
+        bottom_row = (1 - x_offset/gap) * known[-1:, :-1, ...] + (x_offset/gap) * known[-1:, 1:, ...]
+        interpolated[-1:, :bottom_row.shape[1], ...] = bottom_row
+    
+    # far right points
+    if num_x > full_blend.shape[1]:
+        right_column = (1 - y_offset/gap) * known[:-1, -1:, ...] + (y_offset/gap) * known[1:, -1:, ...]
+        interpolated[:right_column.shape[0], -1:, ...] = right_column
+
+    # bottom right corner
+    if num_y > full_blend.shape[0] and num_x > full_blend.shape[1]:
+        interpolated[-1,-1,...] = known[-1, -1, ...]
+
+    return interpolated
+
+
 
 # Hierarchical sampling helper
 
-def sample_pdf(bins, weights, N_samples, det=False):
+def sample_pdf(bins, weights, N_samples, det=False):\
+    # NOTE: had to cast everything to doubles for some reason
 
+    weights = tf.cast(weights, dtype=tf.float64)
     # Get pdf
     weights += 1e-5  # prevent nans
     pdf = weights / tf.reduce_sum(weights, -1, keepdims=True)
     cdf = tf.cumsum(pdf, -1)
     cdf = tf.concat([tf.zeros_like(cdf[..., :1]), cdf], -1)
+    cdf = tf.cast(cdf, dtype=tf.double)
 
     # Take uniform samples
     if det:
@@ -199,6 +251,8 @@ def sample_pdf(bins, weights, N_samples, det=False):
         u = tf.broadcast_to(u, list(cdf.shape[:-1]) + [N_samples])
     else:
         u = tf.random.uniform(list(cdf.shape[:-1]) + [N_samples])
+
+    u = tf.cast(u, dtype=tf.double)
 
     # Invert CDF
     inds = tf.searchsorted(cdf, u, side='right')
@@ -211,6 +265,10 @@ def sample_pdf(bins, weights, N_samples, det=False):
     denom = (cdf_g[..., 1]-cdf_g[..., 0])
     denom = tf.where(denom < 1e-5, tf.ones_like(denom), denom)
     t = (u-cdf_g[..., 0])/denom
+    t = tf.cast(t, dtype=tf.double)
+    bins_g = tf.cast(bins_g, dtype=tf.double)
     samples = bins_g[..., 0] + t * (bins_g[..., 1]-bins_g[..., 0])
 
+    # back to float
+    samples = tf.cast(samples, dtype=tf.float32)
     return samples

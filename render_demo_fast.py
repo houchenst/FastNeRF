@@ -91,8 +91,8 @@ def new_render():
 
 
 # profile rendering
-# cProfile.run('img,disp, acc_alpha = new_render()', 'render_stats')
-img, disp,acc_alpha = new_render()
+cProfile.run('img,disp, acc_alpha = new_render()', 'render_stats')
+# img, disp,acc_alpha = new_render()
 
 # show results
 plt.imshow(img)
