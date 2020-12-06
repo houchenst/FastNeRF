@@ -64,16 +64,9 @@ def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=None):
     def raw2alpha(raw, dists, act_fn=tf.nn.relu): return 1.0 - \
         tf.exp(-act_fn(raw) * dists)
 
-    print(f'third {z_vals.dtype}')
-
     # Compute 'distance' (in time) between each integration time along a ray.
     dists = z_vals[..., 1:] - z_vals[..., :-1]
-    print(f'fourth {z_vals.dtype}')
     # The 'distance' from the last integration time is infinity.
-    print("HERE")
-    print(dists.dtype)
-    print(tf.broadcast_to([1e10], dists[..., :1].shape).dtype)
-
     dists = tf.concat(
         [dists, tf.broadcast_to([1e10], dists[..., :1].shape)],
         axis=-1)  # [N_rays, N_samples]
@@ -225,8 +218,6 @@ def render_rays(ray_batch,
 
         # Obtain all points to evaluate color, density at.
         z_vals = tf.sort(tf.concat([z_vals, z_samples], -1), -1)
-        print("Z Vals")
-        print(z_vals.shape)
         pts = rays_o[..., None, :] + rays_d[..., None, :] * \
             z_vals[..., :, None]  # [N_rays, N_samples + N_importance, 3]
 
@@ -274,8 +265,8 @@ def render_rays_with_pdf(z_vals_mid, weights, ray_batch, render_info,
 
     H, W, y_offset, x_offset, d_factor = render_info
     
-    #interpolate estimated z mids and weights 
-    # TODO: just weight the weights, use all of the z values. 
+    # this doesn't work
+    #interpolate estimated z mids and weights  
     # interpolated_z_mids = mat_bilinear_interpolation(z_vals_mid, H, W, x_offset, y_offset, d_factor)
     # interpolated_weights = mat_bilinear_interpolation(weights, H, W, x_offset, y_offset, d_factor)
 
@@ -300,12 +291,8 @@ def render_rays_with_pdf(z_vals_mid, weights, ray_batch, render_info,
     
     # Interpolation sampling
     z_samples = weighted_sampling_interpolation(z_vals_mid, weights, H, W, x_offset, y_offset, d_factor, NUM_SAMPLES, det=(perturb == 0.))
-    print(f"first type: {z_samples.dtype}")
     # Obtain all points to evaluate color, density at.
     # z_vals = tf.sort(tf.concat([z_vals, z_samples], -1), -1)
-    print("Z Samples")
-    print(z_samples.shape)
-    print(rays_d.shape)
     pts = rays_o[..., None, :] + rays_d[..., None, :] * \
         z_samples[..., :, None]  # [N_rays, N_samples + N_importance, 3]
 
@@ -315,7 +302,6 @@ def render_rays_with_pdf(z_vals_mid, weights, ray_batch, render_info,
     viewdirs = tf.reshape(viewdirs, (list([-1]) + list(viewdirs.shape[2:])))
     # also reshape for teh raw2outputs conversion
     z_samples = tf.reshape(z_samples, (list([-1]) + list(z_samples.shape[2:])))
-    print(f'secdond: {z_samples.dtype}')
     rays_d = tf.reshape(rays_d, (list([-1]) + list(rays_d.shape[2:])))
 
 
@@ -410,13 +396,8 @@ def render(H, W, focal,
     # ys = np.array([range(0,H,d_factor),]*(W // d_factor)).transpose()
     # ys = ys * W
     # inds = xs + ys
-    # # print("SHAPES")
-    # # print(inds.shape)
-    # # print(f"{H//3},{W//3}")
     # inds = inds.flatten()
     # inds = tf.convert_to_tensor(inds, dtype=tf.int32)
-    # # print(rays_o.shape)
-    # # print(inds.shape)
     # rays_o = tf.gather(rays_o, inds, axis=0)
     # rays_d = tf.gather(rays_d, inds, axis=0)
     # near, far = near * tf.ones_like(rays_d[..., :1]), far * tf.ones_like(rays_d[..., :1])
@@ -529,25 +510,17 @@ def render(H, W, focal,
     merged_ret = {}
     for x in range(d_factor**2):
         if x == 0:
-            # print(f'shape: {rays.shape}')
-            # print(f'first group: {tf.reshape(rays[0,0], [-1, data_size]).shape}')
-            print(f'first batch {tf.reshape(rays[0], [-1, data_size])}')
             all_ret = batchify_rays(tf.reshape(rays[0], [-1, data_size]), chunk, **kwargs)
         else:
             # keep the hxw structure for interpolation
             x_offset = x%d_factor
             y_offset = x//d_factor
             render_info = [H, W, y_offset, x_offset, d_factor]
-            print(f'\n\n\n\n input types {z_mids.dtype} {weights.dtype}')
-            print(rays.dtype)
             all_ret = render_rays_with_pdf(z_mids, weights, rays[x], render_info, chunk=chunk, **kwargs)
 
         for k in all_ret:
             end_dims = list(all_ret[k].shape[1:])
             k_sh = list(sh[1:-1]) + end_dims
-            # print(f"k_sh: {k_sh}")
-            # print(f"tensor shape: {all_ret[k].shape}")
-            print(f"components: {list(sh[1:-1])} + {list(all_ret[k].shape[1:])}")
             all_ret[k] = tf.reshape(all_ret[k], k_sh)
 
             # initialized merged results

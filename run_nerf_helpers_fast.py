@@ -165,6 +165,9 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
     t = -(near + rays_o[..., 2]) / rays_d[..., 2]
     rays_o = rays_o + t[..., None] * rays_d
 
+    print(f'\n\n\n\nNEAR: {near}')
+    print(f'oz: {rays_o[...,2]}')
+
     # Projection
     o0 = -1./(W/(2.*focal)) * rays_o[..., 0] / rays_o[..., 2]
     o1 = -1./(H/(2.*focal)) * rays_o[..., 1] / rays_o[..., 2]
@@ -178,8 +181,6 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
 
     rays_o = tf.stack([o0, o1, o2], -1)
     rays_d = tf.stack([d0, d1, d2], -1)
-
-    print(f"ndc shape: {rays_o.shape}\n\t\t{rays_d.shape}")
 
     return rays_o, rays_d
 
@@ -304,8 +305,6 @@ def weighted_sampling_interpolation(known_z_vals, weights, H, W, x_offset, y_off
         bottom_left = int((1 - x_offset/gap) * (y_offset/gap) * samples)
         bottom_right = int((x_offset/gap) * (y_offset/gap) * samples)
 
-        print(f'({top_left},{top_right},{bottom_left},{bottom_right})')
-
         # randomly assign remainders
         for i in range(samples - top_left - top_right - bottom_left - bottom_right):
             ray = random.randint(0,3)
@@ -362,7 +361,6 @@ def weighted_sampling_interpolation(known_z_vals, weights, H, W, x_offset, y_off
     # # handle far bottom right point if necessary
     # if far_bottom and far_right:
     #     interpolated[-1:,-1:,...] = sample_pdf(known_z_vals[-1:,-1:, ...], weights[-1:,-1:, ...], samples, det=det)
-    print(f'returned type {interpolated.dtype}')
 
     return tf.cast(interpolated, dtype=tf.float32)
     

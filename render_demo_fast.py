@@ -44,6 +44,8 @@ images, poses, bds, render_poses, i_test = load_llff_data(args.datadir, args.fac
                                                           recenter=True, bd_factor=.75, 
                                                           spherify=args.spherify)
 H, W, focal = poses[0,:3,-1].astype(np.float32)
+poses = poses[:, :3, :4]
+print(f"NUM IMAGES: {poses.shape[0]}")
 
 H = int(H)
 W = int(W)
@@ -58,6 +60,17 @@ if args.no_ndc:
 else:
     near = 0.
     far = 1.
+
+# get the test and train sets
+if not isinstance(i_test, list):
+    i_test = [i_test]
+
+if args.llffhold > 0:
+    print('Auto LLFF holdout,', args.llffhold)
+    i_test = np.arange(images.shape[0])[::args.llffhold]
+
+i_train = np.array([i for i in np.arange(int(images.shape[0])) if
+                (i not in i_test)])
 
 
 # CELL 2
@@ -77,12 +90,13 @@ def new_render():
     pprint.pprint(render_kwargs_test)
 
 
-    down = 4
+    down = 2
     render_kwargs_fast = {k : render_kwargs_test[k] for k in render_kwargs_test}
     render_kwargs_fast['N_importance'] = 128
 
     c2w = np.eye(4)[:3,:4].astype(np.float32) # identity pose matrix
     test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=c2w, **render_kwargs_fast)
+    print(test)
     img = np.clip(test[0],0,1)
     disp = test[1]
     disp = (disp - np.min(disp)) / (np.max(disp) - np.min(disp))
