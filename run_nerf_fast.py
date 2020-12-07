@@ -8,7 +8,7 @@ import imageio
 import json
 import random
 import time
-from run_nerf_helpers import *
+from run_nerf_helpers_fast import *
 from load_llff import load_llff_data
 from load_deepvoxels import load_dv_data
 from load_blender import load_blender_data
@@ -43,6 +43,77 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, netchunk=1024*64):
     outputs = tf.reshape(outputs_flat, list(
         inputs.shape[:-1]) + [outputs_flat.shape[-1]])
     return outputs
+
+def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0, white_bkgd=None):
+    """Transforms model's predictions to semantically meaningful values.
+
+    Args:
+        raw: [num_rays, num_samples along ray, 4]. Prediction from model.
+        z_vals: [num_rays, num_samples along ray]. Integration time.
+        rays_d: [num_rays, 3]. Direction of each ray.
+
+    Returns:
+        rgb_map: [num_rays, 3]. Estimated RGB color of a ray.
+        disp_map: [num_rays]. Disparity map. Inverse of depth map.
+        acc_map: [num_rays]. Sum of weights along each ray.
+        weights: [num_rays, num_samples]. Weights assigned to each sampled color.
+        depth_map: [num_rays]. Estimated distance to object.
+    """
+    # Function for computing density from model prediction. This value is
+    # strictly between [0, 1].
+    def raw2alpha(raw, dists, act_fn=tf.nn.relu): return 1.0 - \
+        tf.exp(-act_fn(raw) * dists)
+
+    # Compute 'distance' (in time) between each integration time along a ray.
+    dists = z_vals[..., 1:] - z_vals[..., :-1]
+    # The 'distance' from the last integration time is infinity.
+    dists = tf.concat(
+        [dists, tf.broadcast_to([1e10], dists[..., :1].shape)],
+        axis=-1)  # [N_rays, N_samples]
+
+    # Multiply each distance by the norm of its corresponding direction ray
+    # to convert to real world distance (accounts for non-unit directions).
+    dists = dists * tf.linalg.norm(rays_d[..., None, :], axis=-1)
+
+    # Extract RGB of each sample position along each ray.
+    rgb = tf.math.sigmoid(raw[..., :3])  # [N_rays, N_samples, 3]
+
+    # Add noise to model's predictions for density. Can be used to 
+    # regularize network during training (prevents floater artifacts).
+    noise = 0.
+    if raw_noise_std > 0.:
+        noise = tf.random.normal(raw[..., 3].shape) * raw_noise_std
+
+    # Predict density of each sample along each ray. Higher values imply
+    # higher likelihood of being absorbed at this point.
+    alpha = raw2alpha(raw[..., 3] + noise, dists)  # [N_rays, N_samples]
+
+    # Compute weight for RGB of each sample along each ray.  A cumprod() is
+    # used to express the idea of the ray not having reflected up to this
+    # sample yet.
+    # [N_rays, N_samples]
+    weights = alpha * \
+        tf.math.cumprod(1.-alpha + 1e-10, axis=-1, exclusive=True)
+
+    # Computed weighted color of each sample along each ray.
+    rgb_map = tf.reduce_sum(
+        weights[..., None] * rgb, axis=-2)  # [N_rays, 3]
+
+    # Estimated depth map is expected distance.
+    depth_map = tf.reduce_sum(weights * z_vals, axis=-1)
+
+    # Disparity map is inverse depth.
+    disp_map = 1./tf.maximum(1e-10, depth_map /
+                                tf.reduce_sum(weights, axis=-1))
+
+    # Sum of weights along each ray. This value is in [0, 1] up to numerical error.
+    acc_map = tf.reduce_sum(weights, -1)
+
+    # To composite onto a white background, use the accumulated alpha map.
+    if white_bkgd:
+        rgb_map = rgb_map + (1.-acc_map[..., None])
+
+    return rgb_map, disp_map, acc_map, weights, depth_map
 
 
 def render_rays(ray_batch,
@@ -90,78 +161,6 @@ def render_rays(ray_batch,
         sample.
     """
 
-    def raw2outputs(raw, z_vals, rays_d):
-        """Transforms model's predictions to semantically meaningful values.
-
-        Args:
-          raw: [num_rays, num_samples along ray, 4]. Prediction from model.
-          z_vals: [num_rays, num_samples along ray]. Integration time.
-          rays_d: [num_rays, 3]. Direction of each ray.
-
-        Returns:
-          rgb_map: [num_rays, 3]. Estimated RGB color of a ray.
-          disp_map: [num_rays]. Disparity map. Inverse of depth map.
-          acc_map: [num_rays]. Sum of weights along each ray.
-          weights: [num_rays, num_samples]. Weights assigned to each sampled color.
-          depth_map: [num_rays]. Estimated distance to object.
-        """
-        # Function for computing density from model prediction. This value is
-        # strictly between [0, 1].
-        def raw2alpha(raw, dists, act_fn=tf.nn.relu): return 1.0 - \
-            tf.exp(-act_fn(raw) * dists)
-
-        # Compute 'distance' (in time) between each integration time along a ray.
-        dists = z_vals[..., 1:] - z_vals[..., :-1]
-
-        # The 'distance' from the last integration time is infinity.
-        dists = tf.concat(
-            [dists, tf.broadcast_to([1e10], dists[..., :1].shape)],
-            axis=-1)  # [N_rays, N_samples]
-
-        # Multiply each distance by the norm of its corresponding direction ray
-        # to convert to real world distance (accounts for non-unit directions).
-        dists = dists * tf.linalg.norm(rays_d[..., None, :], axis=-1)
-
-        # Extract RGB of each sample position along each ray.
-        rgb = tf.math.sigmoid(raw[..., :3])  # [N_rays, N_samples, 3]
-
-        # Add noise to model's predictions for density. Can be used to 
-        # regularize network during training (prevents floater artifacts).
-        noise = 0.
-        if raw_noise_std > 0.:
-            noise = tf.random.normal(raw[..., 3].shape) * raw_noise_std
-
-        # Predict density of each sample along each ray. Higher values imply
-        # higher likelihood of being absorbed at this point.
-        alpha = raw2alpha(raw[..., 3] + noise, dists)  # [N_rays, N_samples]
-
-        # Compute weight for RGB of each sample along each ray.  A cumprod() is
-        # used to express the idea of the ray not having reflected up to this
-        # sample yet.
-        # [N_rays, N_samples]
-        weights = alpha * \
-            tf.math.cumprod(1.-alpha + 1e-10, axis=-1, exclusive=True)
-
-        # Computed weighted color of each sample along each ray.
-        rgb_map = tf.reduce_sum(
-            weights[..., None] * rgb, axis=-2)  # [N_rays, 3]
-
-        # Estimated depth map is expected distance.
-        depth_map = tf.reduce_sum(weights * z_vals, axis=-1)
-
-        # Disparity map is inverse depth.
-        disp_map = 1./tf.maximum(1e-10, depth_map /
-                                 tf.reduce_sum(weights, axis=-1))
-
-        # Sum of weights along each ray. This value is in [0, 1] up to numerical error.
-        acc_map = tf.reduce_sum(weights, -1)
-
-        # To composite onto a white background, use the accumulated alpha map.
-        if white_bkgd:
-            rgb_map = rgb_map + (1.-acc_map[..., None])
-
-        return rgb_map, disp_map, acc_map, weights, depth_map
-
     ###############################
     # batch size
     N_rays = ray_batch.shape[0]
@@ -205,7 +204,7 @@ def render_rays(ray_batch,
     # Evaluate model at each point.
     raw = network_query_fn(pts, viewdirs, network_fn)  # [N_rays, N_samples, 4]
     rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
-        raw, z_vals, rays_d)
+        raw, z_vals, rays_d, raw_noise_std, white_bkgd)
 
     if N_importance > 0:
         rgb_map_0, disp_map_0, acc_map_0 = rgb_map, disp_map, acc_map
@@ -226,9 +225,12 @@ def render_rays(ray_batch,
         run_fn = network_fn if network_fine is None else network_fine
         raw = network_query_fn(pts, viewdirs, run_fn)
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
-            raw, z_vals, rays_d)
+            raw, z_vals, rays_d, raw_noise_std, white_bkgd)
 
-    ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map, 'depth_map': depth_map}
+    z_mids = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
+    weights = weights[...,1:-1]
+
+    ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map, 'weights': weights, 'z_mids': z_mids}
     if retraw:
         ret['raw'] = raw
     if N_importance > 0:
@@ -241,6 +243,91 @@ def render_rays(ray_batch,
         tf.debugging.check_numerics(ret[k], 'output {}'.format(k))
 
     return ret
+
+# TODO: flatten the hxw dimensions of the inputs so its consistent with the other method
+def render_rays_with_pdf(z_vals_mid, weights, ray_batch, render_info,
+                network_fn,
+                network_query_fn,
+                N_samples,
+                retraw=False,
+                lindisp=False,
+                perturb=0.,
+                N_importance=0,
+                network_fine=None,
+                white_bkgd=False,
+                raw_noise_std=0.,
+                verbose=False,
+                chunk=1024*32):
+    '''
+    Render a ray given a known pdf
+    '''
+    NUM_SAMPLES = 128
+
+    H, W, y_offset, x_offset, d_factor = render_info
+    
+    # this doesn't work
+    #interpolate estimated z mids and weights  
+    # interpolated_z_mids = mat_bilinear_interpolation(z_vals_mid, H, W, x_offset, y_offset, d_factor)
+    # interpolated_weights = mat_bilinear_interpolation(weights, H, W, x_offset, y_offset, d_factor)
+
+    # batch size
+    N_rays = ray_batch.shape[0]
+
+    # Extract ray origin, direction.
+    rays_o, rays_d = ray_batch[..., 0:3], ray_batch[..., 3:6]  # [h, w, 3] each
+
+    # Extract unit-normalized viewing direction.
+    viewdirs = ray_batch[..., -3:] if ray_batch.shape[-1] > 8 else None
+
+    # Extract lower, upper bound for ray distance.
+    bounds = tf.reshape(ray_batch[..., 6:8], [-1, 1, 2])
+    near, far = bounds[..., 0], bounds[..., 1]  # [-1,1]
+
+    # Obtain additional integration times to evaluate based on the weights
+    # assigned to colors in the coarse model.
+    # z_samples = sample_pdf(
+    #     interpolated_z_mids, interpolated_weights, NUM_SAMPLES, det=(perturb == 0.))
+    # z_samples = tf.stop_gradient(z_samples)
+    
+    # Interpolation sampling
+    z_samples = weighted_sampling_interpolation(z_vals_mid, weights, H, W, x_offset, y_offset, d_factor, NUM_SAMPLES, det=(perturb == 0.))
+    # Obtain all points to evaluate color, density at.
+    # z_vals = tf.sort(tf.concat([z_vals, z_samples], -1), -1)
+    pts = rays_o[..., None, :] + rays_d[..., None, :] * \
+        z_samples[..., :, None]  # [N_rays, N_samples + N_importance, 3]
+
+    # Make predictions with network_fine.
+    og_shape = pts.shape[:2]
+    pts = tf.reshape(pts, (list([-1]) + list(pts.shape[2:])))
+    viewdirs = tf.reshape(viewdirs, (list([-1]) + list(viewdirs.shape[2:])))
+    # also reshape for teh raw2outputs conversion
+    z_samples = tf.reshape(z_samples, (list([-1]) + list(z_samples.shape[2:])))
+    rays_d = tf.reshape(rays_d, (list([-1]) + list(rays_d.shape[2:])))
+
+
+    run_fn = network_fn if network_fine is None else network_fine
+    all_ret = {'rgb_map':[],
+                'disp_map':[],
+                'acc_map':[],}
+    if retraw:
+        all_ret['raw'] = []
+
+    for batch in range(0, pts.shape[0], chunk):
+        raw = network_query_fn(pts, viewdirs, run_fn)
+        rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
+            raw, z_samples, rays_d, raw_noise_std, white_bkgd)
+        ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map}
+        if retraw:
+            ret['raw'] = raw    
+        for k in ret:
+            all_ret[k].append(ret[k])
+
+    for k in all_ret:
+        tf.debugging.check_numerics(all_ret[k], 'output {}'.format(k))
+
+    all_ret = {k: tf.concat(all_ret[k], 0) for k in all_ret}
+
+    return all_ret
 
 
 def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
@@ -294,45 +381,167 @@ def render(H, W, focal,
         # use provided ray batch
         rays_o, rays_d = rays
 
+    # using gather or slicing
+    gather = False
+
+    if gather:
+        # temporarily flatten
+        rays_o = tf.reshape(rays_o, [-1, 3])
+        rays_d = tf.reshape(rays_d, [-1, 3])
+    
+
+    # downsampling test
+    d_factor = 3
+    # xs = np.array([range(0,W,d_factor),]*(H // d_factor))
+    # ys = np.array([range(0,H,d_factor),]*(W // d_factor)).transpose()
+    # ys = ys * W
+    # inds = xs + ys
+    # inds = inds.flatten()
+    # inds = tf.convert_to_tensor(inds, dtype=tf.int32)
+    # rays_o = tf.gather(rays_o, inds, axis=0)
+    # rays_d = tf.gather(rays_d, inds, axis=0)
+    # near, far = near * tf.ones_like(rays_d[..., :1]), far * tf.ones_like(rays_d[..., :1])
+
+
+    # downsampling with all start shifts
+    # Shape: group# x group height x group width x 3
+    ray_groups_o = np.zeros((d_factor**2, H//d_factor, W//d_factor, 3))
+    ray_groups_d = np.zeros((d_factor**2, H//d_factor, W//d_factor, 3))
+    
+    # Shape: group# x group height x group width x 1
+    near_groups = near * np.ones((d_factor**2, H//d_factor, W//d_factor, 1))
+    far_groups = far * np.ones((d_factor**2, H//d_factor, W//d_factor, 1))
+
+    # TODO: account for case where H and W aren't multiples of d_factor
+    for i in range(d_factor):
+        for j in range(d_factor):
+            if gather:
+                xs = range(j, W, d_factor)
+                ys = range(i, H, d_factor)
+                width = len(xs)
+                height = len(ys)
+                xs = np.array([xs,]*height)
+                ys = np.array([ys,]*width).transpose()
+                ys = ys * W
+                inds = xs + ys
+                inds = inds.flatten()
+                inds = tf.convert_to_tensor(inds, dtype=tf.int32)
+                # get rays and reshape
+                rays_g_o = tf.gather(rays_o, inds, axis=0)
+                rays_g_d = tf.gather(rays_d, inds, axis=0)
+                rays_g_o = tf.reshape(rays_g_o, (height, width, 3))
+                rays_g_d = tf.reshape(rays_g_d, (height, width, 3))
+                # put rays into larger tensor
+                ray_groups_o[i*d_factor + j, :height, :width, :] = rays_g_o
+                ray_groups_d[i*d_factor + j, :height, :width, :] = rays_g_d
+            else:
+                rays_g_o = rays_o[i::d_factor, j::d_factor]
+                rays_g_d = rays_d[i::d_factor, j::d_factor]
+                # put rays into larger tensor
+                # indexing accounts for the height/width being either H//2 or H//2 + 1
+                # depending on the start index
+                ray_groups_o[i*d_factor + j, :H//d_factor, :W//d_factor, :] = rays_g_o
+                ray_groups_d[i*d_factor + j, :H//d_factor, :W//d_factor, :] = rays_g_d
+
+    ray_groups_o = tf.convert_to_tensor(ray_groups_o, dtype=tf.float32)
+    ray_groups_d = tf.convert_to_tensor(ray_groups_d, dtype=tf.float32)
+    near_groups = tf.convert_to_tensor(near_groups, dtype=tf.float32)
+    far_groups = tf.convert_to_tensor(far_groups, dtype=tf.float32)
+
+    # return to original ratio (downsampled shape)
+    # rays_o = tf.reshape(rays_o, (H//d_factor, W//d_factor, 3))
+    # rays_d = tf.reshape(rays_d, (H//d_factor, W//d_factor, 3))
+
     if use_viewdirs:
-        # provide ray directions as input
-        viewdirs = rays_d
-        if c2w_staticcam is not None:
-            # special case to visualize effect of viewdirs
-            rays_o, rays_d = get_rays(H, W, focal, c2w_staticcam)
+        viewdir_groups = []
+        
+        for i in range(d_factor**2):
+            # provide ray directions as input
+            viewdirs = ray_groups_d[i]
 
-        # Make all directions unit magnitude.
-        # shape: [batch_size, 3]
-        viewdirs = viewdirs / tf.linalg.norm(viewdirs, axis=-1, keepdims=True)
-        viewdirs = tf.cast(tf.reshape(viewdirs, [-1, 3]), dtype=tf.float32)
+            # NOTE: c2w_staticcam is not supported in our faster version
+            # -Trevor
+            # if c2w_staticcam is not None:
+            #     # special case to visualize effect of viewdirs
+            #     rays_o, rays_d = get_rays(H, W, focal, c2w_staticcam)
 
-    sh = rays_d.shape  # [..., 3]
+            # Make all directions unit magnitude.
+            # shape: [batch_size, 3]
+            viewdirs = viewdirs / tf.linalg.norm(viewdirs, axis=-1, keepdims=True)
+            # viewdirs = tf.cast(tf.reshape(viewdirs, [-1, 3]), dtype=tf.float32)
+            viewdirs = tf.cast(viewdirs, dtype=tf.float32)
+            viewdir_groups.append(viewdirs)
+        viewdir_groups = tf.stack(viewdir_groups, axis=0)
+
+    sh = ray_groups_d.shape  # [..., 3]
     if ndc:
-        # for forward facing scenes
-        rays_o, rays_d = ndc_rays(
-            H, W, focal, tf.cast(1., tf.float32), rays_o, rays_d)
+        o_groups = []
+        d_groups = []
+        for i in range(d_factor**2):
+            # for forward facing scenes
+            ray_oi, ray_di = ndc_rays(
+                H, W, focal, tf.cast(1., tf.float32), ray_groups_o[i], ray_groups_d[i])
+            o_groups.append(ray_oi)
+            d_groups.append(ray_di)
+        ray_groups_o = tf.stack(o_groups, axis=0)
+        ray_groups_d = tf.stack(d_groups, axis=0)
 
+    # This removes the view structure (HxW)
     # Create ray batch
-    rays_o = tf.cast(tf.reshape(rays_o, [-1, 3]), dtype=tf.float32)
-    rays_d = tf.cast(tf.reshape(rays_d, [-1, 3]), dtype=tf.float32)
-    near, far = near * \
-        tf.ones_like(rays_d[..., :1]), far * tf.ones_like(rays_d[..., :1])
+    # rays_o = tf.cast(tf.reshape(rays_o, [-1, 3]), dtype=tf.float32)
+    # rays_d = tf.cast(tf.reshape(rays_d, [-1, 3]), dtype=tf.float32)
+    # near, far = near * \
+    #     tf.ones_like(rays_d[..., :1]), far * tf.ones_like(rays_d[..., :1])
+
+    ray_groups_o = tf.cast(ray_groups_o, dtype=tf.float32)
+    ray_groups_d = tf.cast(ray_groups_d, dtype=tf.float32)
+    near_groups = tf.cast(near_groups, dtype=tf.float32)
+    far_groups = tf.cast(far_groups, dtype=tf.float32)
 
     # (ray origin, ray direction, min dist, max dist) for each ray
-    rays = tf.concat([rays_o, rays_d, near, far], axis=-1)
+    rays = tf.concat([ray_groups_o, ray_groups_d, near_groups, far_groups], axis=-1)
     if use_viewdirs:
         # (ray origin, ray direction, min dist, max dist, normalized viewing direction)
-        rays = tf.concat([rays, viewdirs], axis=-1)
+        rays = tf.concat([rays, viewdir_groups], axis=-1)
+    data_size = rays.shape[-1]
 
     # Render and reshape
-    all_ret = batchify_rays(rays, chunk, **kwargs)
-    for k in all_ret:
-        k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
-        all_ret[k] = tf.reshape(all_ret[k], k_sh)
+    all_dicts = []
+    merged_ret = {}
+    for x in range(d_factor**2):
+        if x == 0:
+            all_ret = batchify_rays(tf.reshape(rays[0], [-1, data_size]), chunk, **kwargs)
+        else:
+            # keep the hxw structure for interpolation
+            x_offset = x%d_factor
+            y_offset = x//d_factor
+            render_info = [H, W, y_offset, x_offset, d_factor]
+            all_ret = render_rays_with_pdf(z_mids, weights, rays[x], render_info, chunk=chunk, **kwargs)
+
+        for k in all_ret:
+            end_dims = list(all_ret[k].shape[1:])
+            k_sh = list(sh[1:-1]) + end_dims
+            all_ret[k] = tf.reshape(all_ret[k], k_sh)
+
+            # initialized merged results
+            # make zeros matrices in the correct shape for each type of returned data
+            if x == 0:
+                merged_ret[k] = np.zeros(list([H,W]) + end_dims)
+                # y_shape = H//d_factor + (H%d_factor > 0)
+                # x_shape = W//d_factor + (W%d_factor > 0)
+                # z_mids = tf.reshape(all_ret['z_mids'], list([y_shape, x_shape]) + list(all_ret['z_mids'].shape[1:]))
+                # weights = tf.reshape(all_ret['weights'], list([y_shape, x_shape]) + list(all_ret['weights'].shape[1:]))
+                z_mids = all_ret['z_mids']
+                weights = all_ret['weights']
+
+        # add to the merged results
+        for k in all_ret:
+            merged_ret[k][(x//d_factor)::d_factor, (x%d_factor)::d_factor, ...] = all_ret[k]
+
 
     k_extract = ['rgb_map', 'disp_map', 'acc_map']
-    ret_list = [all_ret[k] for k in k_extract]
-    ret_dict = {k: all_ret[k] for k in all_ret if k not in k_extract}
+    ret_list = [merged_ret[k] for k in k_extract]
+    ret_dict = {k: merged_ret[k] for k in merged_ret if k not in k_extract}
     return ret_list + [ret_dict]
 
 
@@ -754,8 +963,8 @@ def train():
         os.path.join(basedir, 'summaries', expname))
     writer.set_as_default()
 
-    time0 = time.time()
     for i in range(start, N_iters):
+        time0 = time.time()
 
         # Sample random ray batch
 
@@ -926,4 +1135,3 @@ def train():
 
 if __name__ == '__main__':
     train()
-
