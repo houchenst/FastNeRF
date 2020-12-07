@@ -754,8 +754,8 @@ def train():
         os.path.join(basedir, 'summaries', expname))
     writer.set_as_default()
 
+    time0 = time.time()
     for i in range(start, N_iters):
-        time0 = time.time()
 
         # Sample random ray batch
 
@@ -926,3 +926,4 @@ def train():
 
 if __name__ == '__main__':
     train()
+
