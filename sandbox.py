@@ -39,6 +39,11 @@ ax = fig.add_subplot(111, projection='3d')
 red_factor = 1
 inds = random.sample(range(points_3d.shape[0]), int(points_3d.shape[0]/ red_factor))
 points_3d = np.take(points_3d, inds, axis=0)
-ax.scatter(points_3d[:, 0], points_3d[:, 1], points_3d[:, 2], c="C0", alpha=0.8)
-ax.scatter(centers[:, 0], centers[:,1], centers[:,2], c="red", alpha=0.5)
+ax.scatter(points_3d[:, 1], points_3d[:, 0], points_3d[:, 2], c="C0", alpha=0.8)
+ax.scatter(centers[:, 1], centers[:,0], centers[:,2], c="red", alpha=0.5)
+xs = [-1,-1,1,1,-1]
+ys = [-1,1,1,-1,-1]
+zs = [-1,-1,-1,-1,-1]
+ax.plot(xs,ys,zs)
+ax.autoscale_view(tight=None, scalex=False, scaley=False, scalez=True)
 plt.show()

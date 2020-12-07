@@ -90,7 +90,7 @@ def new_render():
     pprint.pprint(render_kwargs_test)
 
 
-    down = 2
+    down = 4
     render_kwargs_fast = {k : render_kwargs_test[k] for k in render_kwargs_test}
     render_kwargs_fast['N_importance'] = 128
 

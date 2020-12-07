@@ -118,29 +118,75 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_views=3, output_ch=4, skips
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     return model
 
+# For scene vizualization
+def plot_scene(ax, points, poses, hwfs):
+    '''
+    Plots camera centers, boxes showing their view directions, and 
+    3D world points on a provided matplotlib axis.
+
+    Arguments-
+    ax     - a matplotlib axis
+    points - 3D world points
+    poses  - c2w camera matrices
+    hwfs   - height, width, focal length of camera views 
+    '''
+
+    ax.scatter(points[:,0], points[:,1], points[:,2], c='C0', alpha=0.8)
+    for i in range(len(poses)):
+        c2w = poses[i]
+        H, W, focal = hwfs[i]
+        os, ds = get_rays_np(H,W,focal, c2w)
+        
+        # plot center
+        center = os[0,0]
+        ax.scatter([center[0]], [center[1]], [center[2]], c='red', alpha=0.5)
+
+        # plot view bounds
+        xs = [ds[0,0,0], ds[0,-1,0],ds[-1,-1,0],ds[-1,0,0],ds[0,0,0]]
+        ys = [ds[0,0,1], ds[0,-1,1],ds[-1,-1,1],ds[-1,0,1],ds[0,0,1]]
+        zs = [ds[0,0,2], ds[0,-1,2],ds[-1,-1,2],ds[-1,0,2],ds[0,0,2]]
+        ax.plot(xs, ys, zs, c='red')
+
+    #fix the scaling 
+    ax.autoscale_view(tight=None, scalex=False, scaley=False, scalez=True)
+
+    x_bound = ax.get_xlim()
+    y_bound = ax.get_ylim()
+    new_bound = (min(x_bound[0], y_bound[0]), max(x_bound[1], y_bound[1]))
+    ax.set_xlim(left=new_bound[0], right=new_bound[1])
+    ax.set_ylim(bottom=new_bound[0], top=new_bound[1])
 
 # Ray helpers
 
-def get_rays(H, W, focal, c2w):
+def get_rays(H, W, focal, c2w, override_dirs=None):
     """Get ray origins, directions from a pinhole camera."""
     print(f"HW: ({H},{W})")
     i, j = tf.meshgrid(tf.range(W, dtype=tf.float32),
                        tf.range(H, dtype=tf.float32), indexing='xy')
     dirs = tf.stack([(i-W*.5)/focal, -(j-H*.5)/focal, -tf.ones_like(i)], -1)
+    if override_dirs is not None:
+        dirs = override_dirs
+    print(dirs)
     rays_d = tf.reduce_sum(dirs[..., np.newaxis, :] * c2w[:3, :3], -1)
+    print(rays_d)
     rays_o = tf.broadcast_to(c2w[:3, -1], tf.shape(rays_d))
     print(f"origins: {rays_o.shape}")
     print(f"dirs:    {rays_d.shape}")
     return rays_o, rays_d
 
 
-def get_rays_np(H, W, focal, c2w):
+def get_rays_np(H, W, focal, c2w, override_dirs=None):
     """Get ray origins, directions from a pinhole camera."""
     i, j = np.meshgrid(np.arange(W, dtype=np.float32),
                        np.arange(H, dtype=np.float32), indexing='xy')
     dirs = np.stack([(i-W*.5)/focal, -(j-H*.5)/focal, -np.ones_like(i)], -1)
+    if override_dirs is not None:
+        dirs = override_dirs
     rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3, :3], -1)
     rays_o = np.broadcast_to(c2w[:3, -1], np.shape(rays_d))
+    print("RAYS")
+    # print(rays_d[1])
+    # print(rays_d[50])
     return rays_o, rays_d
 
 
@@ -165,9 +211,6 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
     t = -(near + rays_o[..., 2]) / rays_d[..., 2]
     rays_o = rays_o + t[..., None] * rays_d
 
-    print(f'\n\n\n\nNEAR: {near}')
-    print(f'oz: {rays_o[...,2]}')
-
     # Projection
     o0 = -1./(W/(2.*focal)) * rays_o[..., 0] / rays_o[..., 2]
     o1 = -1./(H/(2.*focal)) * rays_o[..., 1] / rays_o[..., 2]
@@ -181,8 +224,21 @@ def ndc_rays(H, W, focal, near, rays_o, rays_d):
 
     rays_o = tf.stack([o0, o1, o2], -1)
     rays_d = tf.stack([d0, d1, d2], -1)
-
+    print(rays_d[...,2])
     return rays_o, rays_d
+
+def ndc_points(H, W, focal, near, points):
+    '''
+    Convert 3d world points to normalized device coordinates
+    '''
+    # Projection
+    o0 = -1./(W/(2.*focal)) * points[..., 0] / points[..., 2]
+    o1 = -1./(H/(2.*focal)) * points[..., 1] / points[..., 2]
+    o2 = 1. + 2. * near / points[..., 2]
+
+    points = tf.stack([o0, o1, o2], -1)
+    return points
+
 
 def mat_bilinear_interpolation(known, H, W, x_offset, y_offset, gap):
     '''
