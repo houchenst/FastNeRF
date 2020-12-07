@@ -9,6 +9,7 @@ import json
 import random
 import time
 from run_nerf_helpers import *
+from point_cloud import *
 from load_llff import load_llff_data
 from load_deepvoxels import load_dv_data
 from load_blender import load_blender_data
@@ -51,6 +52,7 @@ def render_rays(ray_batch,
                 N_samples,
                 retraw=False,
                 lindisp=False,
+                pc=False,
                 perturb=0.,
                 N_importance=0,
                 network_fine=None,
@@ -187,6 +189,11 @@ def render_rays(ray_batch,
         # Sample linearly in inverse depth (disparity).
         z_vals = 1./(1./near * (1.-t_vals) + 1./far * (t_vals))
     z_vals = tf.broadcast_to(z_vals, [N_rays, N_samples])
+    # if pc:
+    #     z_vals = z_vals[:,1:-1]
+    #     first = tf.zeros((N_rays,1))
+    #     last = tf.ones((N_rays,1))
+    #     z_vals = tf.concat([first,z_vals,last], -1)
 
     # Perturb sampling time along each ray.
     if perturb > 0.:
@@ -243,11 +250,11 @@ def render_rays(ray_batch,
     return ret
 
 
-def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
+def batchify_rays(rays_flat, chunk=1024*32,pc=False, **kwargs):
     """Render rays in smaller minibatches to avoid OOM."""
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        ret = render_rays(rays_flat[i:i+chunk], **kwargs)
+        ret = render_rays(rays_flat[i:i+chunk], pc=pc, **kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []
@@ -259,7 +266,7 @@ def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
 
 def render(H, W, focal,
            chunk=1024*32, rays=None, c2w=None, ndc=True,
-           near=0., far=1.,
+           near=0., far=1., pc=False,
            use_viewdirs=False, c2w_staticcam=None,
            **kwargs):
     """Render rays
@@ -317,6 +324,10 @@ def render(H, W, focal,
     rays_d = tf.cast(tf.reshape(rays_d, [-1, 3]), dtype=tf.float32)
     near, far = near * \
         tf.ones_like(rays_d[..., :1]), far * tf.ones_like(rays_d[..., :1])
+    if pc:
+        near, far = depth_bounds([H, W, focal], c2w)
+        near = tf.cast(tf.reshape(near, (-1,1)), tf.float32)
+        far = tf.cast(tf.reshape(far, (-1,1)), tf.float32)
 
     # (ray origin, ray direction, min dist, max dist) for each ray
     rays = tf.concat([rays_o, rays_d, near, far], axis=-1)
@@ -325,7 +336,7 @@ def render(H, W, focal,
         rays = tf.concat([rays, viewdirs], axis=-1)
 
     # Render and reshape
-    all_ret = batchify_rays(rays, chunk, **kwargs)
+    all_ret = batchify_rays(rays, chunk, pc=pc, **kwargs)
     for k in all_ret:
         k_sh = list(sh[:-1]) + list(all_ret[k].shape[1:])
         all_ret[k] = tf.reshape(all_ret[k], k_sh)

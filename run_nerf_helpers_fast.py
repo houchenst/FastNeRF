@@ -160,18 +160,13 @@ def plot_scene(ax, points, poses, hwfs):
 
 def get_rays(H, W, focal, c2w, override_dirs=None):
     """Get ray origins, directions from a pinhole camera."""
-    print(f"HW: ({H},{W})")
     i, j = tf.meshgrid(tf.range(W, dtype=tf.float32),
                        tf.range(H, dtype=tf.float32), indexing='xy')
     dirs = tf.stack([(i-W*.5)/focal, -(j-H*.5)/focal, -tf.ones_like(i)], -1)
     if override_dirs is not None:
         dirs = override_dirs
-    print(dirs)
     rays_d = tf.reduce_sum(dirs[..., np.newaxis, :] * c2w[:3, :3], -1)
-    print(rays_d)
     rays_o = tf.broadcast_to(c2w[:3, -1], tf.shape(rays_d))
-    print(f"origins: {rays_o.shape}")
-    print(f"dirs:    {rays_d.shape}")
     return rays_o, rays_d
 
 
@@ -184,7 +179,6 @@ def get_rays_np(H, W, focal, c2w, override_dirs=None):
         dirs = override_dirs
     rays_d = np.sum(dirs[..., np.newaxis, :] * c2w[:3, :3], -1)
     rays_o = np.broadcast_to(c2w[:3, -1], np.shape(rays_d))
-    print("RAYS")
     # print(rays_d[1])
     # print(rays_d[50])
     return rays_o, rays_d

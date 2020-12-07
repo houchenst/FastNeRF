@@ -44,7 +44,7 @@ images, poses, bds, render_poses, i_test = load_llff_data(args.datadir, args.fac
                                                           recenter=True, bd_factor=.75, 
                                                           spherify=args.spherify)
 H, W, focal = poses[0,:3,-1].astype(np.float32)
-
+poses = poses[:, :3, :4]
 H = int(H)
 W = int(W)
 hwf = [H, W, focal]
@@ -77,12 +77,12 @@ def new_render():
     pprint.pprint(render_kwargs_test)
 
 
-    down = 4
+    down = 16
     render_kwargs_fast = {k : render_kwargs_test[k] for k in render_kwargs_test}
     render_kwargs_fast['N_importance'] = 128
 
     c2w = np.eye(4)[:3,:4].astype(np.float32) # identity pose matrix
-    test = run_nerf.render(H//down, W//down, focal/down, c2w=c2w, **render_kwargs_fast)
+    test = run_nerf.render(H//down, W//down, focal/down, c2w=poses[0], pc=False, **render_kwargs_fast)
     img = np.clip(test[0],0,1)
     disp = test[1]
     disp = (disp - np.min(disp)) / (np.max(disp) - np.min(disp))
