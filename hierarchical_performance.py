@@ -127,7 +127,7 @@ plt.imsave(os.path.join(img_dir, f"GT0.png"), images[i_test[0]])
 down_x = [1,2,3,4,6,9,12,18]
 psnr = []
 mse = []
-time = []
+ts = []
 for x in down_x:
     print(f"Running with {x}x reduced sampling")
     if x == 0:
@@ -136,12 +136,12 @@ for x in down_x:
         t, m, p = new_render(img_dir, fast=True, r2=192, d=x)
     psnr.append(psnr)
     mse.append(mse)
-    time.append(t)
+    ts.append(t)
 res = {}
 res['down_x'] = [x**2 for x in down_x]
 res['psnr'] = psnr
 res['mse'] = mse
-res['time'] = time
+res['time'] = ts
 
 with open(os.path.join(res_dir, 'results.txt'), 'w') as outfile:
         json.dump(res,outfile)
