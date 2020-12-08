@@ -129,6 +129,7 @@ psnr = []
 mse = []
 time = []
 for x in down_x:
+    print(f"Running with {x}x reduced sampling")
     if x == 0:
         t, m, p = new_render(img_dir, fast=False,r2=128,d=3)
     else:
