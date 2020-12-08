@@ -80,12 +80,12 @@ def get_data():
     result_directory = "./fern_pc_results"
     img_dir = os.path.join(result_directory, "imgs")
 
-    down = 64
+    down = 1
 
     plt.imsave(os.path.join(img_dir, f"GT{i_test[0]}.png"), images[i_test[0]])
     plt.imsave(os.path.join(img_dir, f"GT{i_test[1]}.png"), images[i_test[1]])
 
-    for num_samps in [8,16,32]:
+    for num_samps in [8,16,32,64]:
         print(f'Running {num_samps} sample test')
         for pc in [True, False]:
             print(f'{"not " if not pc else ""}using pc')
@@ -99,7 +99,7 @@ def get_data():
             for i in [i_test[0], i_test[1]]:
                 gt = images[i]
                 start_time = time.time()
-                ret_vals = run_nerf.render(H//down, W//down, focal/down, c2w=poses[i], pc=pc, **render_kwargs)
+                ret_vals = run_nerf.render(H//down, W//down, focal/down, c2w=poses[i], pc=pc, cloudsize=16, **render_kwargs)
                 end_time = time.time()
                 
                 # add to cum time
@@ -107,8 +107,9 @@ def get_data():
                 
                 # add to accuracy
                 img = np.clip(ret_vals[0],0,1)
-                mse = run_nerf.img2mse(np.zeros((H//down, W//down,3), dtype=np.float32), img)
-                # mse = run_nerf.img2mse(gt, img)
+                # TODO: make sure this is commented out for real results (just used to test that it runs)
+                # mse = run_nerf.img2mse(np.zeros((H//down, W//down,3), dtype=np.float32), img)
+                mse = run_nerf.img2mse(gt, img)
                 psnr = run_nerf.mse2psnr(mse)
                 total_mse += float(mse)
                 total_psnr += float(psnr)
@@ -172,15 +173,60 @@ def cloud_size_vs_performance():
     print('Render kwargs:')
     pprint.pprint(render_kwargs)
 
-    dir = "./cloud_size_test"
+    res_dir = "./cloud_size_test"
 
     res = {}
     res['cloud_size'] = []
     res['mse'] = []
-    res['']
+    res['psnr'] = []
+    res['time'] = []
 
     for i in [1,2,4,8,16,32]:
-        ret_vals = run_nerf.render(H//down, W//down, focal/down, c2w=poses[to_use], pc=pc, cloudsize=i, **render_kwargs)
+        start_time = time.time()
+        ret_vals = run_nerf.render(H, W, focal, c2w=poses[to_use], pc=pc, cloudsize=i, **render_kwargs)
+        end_time = time.time()
+        img = np.clip(ret_vals[0],0,1)
+        mse = run_nerf.img2mse(images[to_use], img)
+        psnr = run_nerf.mse2psnr(mse)
+        res['cloud_size'].append((17 * H * W) // (i * i))
+        res['mse'].append(mse)
+        res['psnr'].append(psnr)
+        res['time'].append(end_time - start_time)
+
+    # a = [1,2,4,8,16,32]
+    # b = [1/x for x in a]
+
+    # make plots
+    # cs vs psnr
+    fig, ax = plt.subplots(1,1)
+    fig.suptitle('PSNR vs Point Cloud Size')
+    ax.set_xlabel('Cloud Size')
+    ax.set_ylabel('PSNR')
+    plt.xscale('log')
+    ax.plot(res['cloud_size'],res['psnr'])
+    plt.savefig(os.path.join(res_dir, 'cs_psnr.png'))
+
+    fig, ax = plt.subplots(1,1)
+    fig.suptitle('PSNR vs Running Time')
+    ax.set_xlabel('Time')
+    ax.set_ylabel('PSNR')
+    plt.xscale('log')
+    ax.plot(res['time'],res['psnr'])
+    plt.savefig(os.path.join(res_dir, 'time_psnr.png'))
+
+    fig, ax = plt.subplots(1,1)
+    fig.suptitle('Running Time vs Cloud Size')
+    ax.set_xlabel('Cloud Size')
+    ax.set_ylabel('Running Time')
+    plt.xscale('log')
+    plt.yscale('log')
+    ax.plot(res['cloud_size'],res['time'])
+    plt.savefig(os.path.join(res_dir, 'cs_time.png'))
+    
+    with open(os.path.join(res_dir, 'results.txt'), 'w') as outfile:
+        json.dump(res,outfile)
+        
+
 
 
             
@@ -210,11 +256,15 @@ def plot_data():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test the point cloud method vs vanilla NeRF')
     parser.add_argument('--generate',  action='store_true', help='generate data')
+    parser.add_argument('--cloudsize', action='store_true', help='compare gains from larger cloud size')
     parser.add_argument('--plot', action='store_true', help='plot existing data')
     args = parser.parse_args()
     
     if args.generate:
         get_data()
+
+    if args.cloudsize:
+        cloud_size_vs_performance()
 
     if args.plot:
         plot_data
