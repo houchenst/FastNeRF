@@ -92,7 +92,7 @@ def new_render(img_dir, fast=False,r2=128,d=3):
     pprint.pprint(render_kwargs_test)
 
 
-    down = 2
+    down = 1
     render_kwargs_fast = {k : render_kwargs_test[k] for k in render_kwargs_test}
     render_kwargs_fast['N_importance'] = r2
 
