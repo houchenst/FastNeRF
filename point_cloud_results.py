@@ -131,7 +131,7 @@ def plot_data():
     Plot the data from results.txt in the given results directory
     '''
     
-    res_dir = "./cloud_size_test"
+    res_dir = "./fern_pc_results"
 
     with open(os.path.join(res_dir, 'results.txt')) as json_file:
         res = json.load(json_file)
@@ -140,6 +140,7 @@ def plot_data():
         nopc_time = []
         pc_psnr = []
         nopc_psnr = []
+        num_samps = [4,8,16,32,64]
         for num_samps in [4,8,16,32,64]:
             pc_time.append(res['pc'][num_samps]['time'])
             nopc_time.append(res['no_pc'][num_samps]['time'])
@@ -147,19 +148,22 @@ def plot_data():
             pc_psnr.append(res['no_pc'][num_samps]['psnr'])
 
         fig, ax = plt.subplots(1,1)
-        fig.suptitle('PSNR vs Point Cloud Size')
-        ax.set_xlabel('Cloud Size')
+        fig.suptitle('PSNR vs Num Samples')
+        ax.set_xlabel('Samples per Ray')
         ax.set_ylabel('PSNR')
         plt.xscale('log')
-        ax.plot(res['cloud_size'],res['psnr'])
-        plt.savefig(os.path.join(res_dir, 'cs_psnr.png'))
+        ax.plot(num_samps,nopc_psnr)
+        ax.plot(num_samps,pc_psnr)
+        plt.savefig(os.path.join(res_dir, 'samps_psnr.png'))
 
         fig, ax = plt.subplots(1,1)
         fig.suptitle('PSNR vs Running Time')
         ax.set_xlabel('Time')
         ax.set_ylabel('PSNR')
         plt.xscale('log')
-        ax.plot(res['time'],res['psnr'])
+        ax.plot(nopc_time,nopc_psnr)
+        ax.plot(pc_time, pc_psnr)
+
         plt.savefig(os.path.join(res_dir, 'time_psnr.png'))
 
 
