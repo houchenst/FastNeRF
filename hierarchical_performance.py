@@ -92,7 +92,7 @@ def new_render(img_dir, fast=False,r2=128,d=3):
     pprint.pprint(render_kwargs_test)
 
 
-    down = 1
+    down = 2
     render_kwargs_fast = {k : render_kwargs_test[k] for k in render_kwargs_test}
     render_kwargs_fast['N_importance'] = r2
 
@@ -124,7 +124,7 @@ res_dir = "./fast_results"
 img_dir = os.path.join(res_dir, "imgs")
 plt.imsave(os.path.join(img_dir, f"GT0.png"), images[i_test[0]])
 
-down_x = [1,2,3,4,6,9,12,18]
+down_x = [1,2,3,6,9,18]
 psnr = []
 mse = []
 ts = []
