@@ -92,7 +92,7 @@ def new_render(img_dir, fast=False,r2=128,d=3):
     pprint.pprint(render_kwargs_test)
 
 
-    down = 1
+    down = 2
     render_kwargs_fast = {k : render_kwargs_test[k] for k in render_kwargs_test}
     render_kwargs_fast['N_importance'] = r2
 
@@ -130,7 +130,7 @@ mse = []
 ts = []
 for x in down_x:
     print(f"Running with {x}x reduced sampling")
-    if x == 0:
+    if x == 1:
         t, m, p = new_render(img_dir, fast=False,r2=128,d=3)
     else:
         t, m, p = new_render(img_dir, fast=True, r2=192, d=x)
