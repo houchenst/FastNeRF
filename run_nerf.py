@@ -266,7 +266,7 @@ def batchify_rays(rays_flat, chunk=1024*32,pc=False, **kwargs):
 
 def render(H, W, focal,
            chunk=1024*32, rays=None, c2w=None, ndc=True,
-           near=0., far=1., pc=False,
+           near=0., far=1., pc=False, cloudsize=1,
            use_viewdirs=False, c2w_staticcam=None,
            **kwargs):
     """Render rays
@@ -325,7 +325,7 @@ def render(H, W, focal,
     near, far = near * \
         tf.ones_like(rays_d[..., :1]), far * tf.ones_like(rays_d[..., :1])
     if pc:
-        near, far = depth_bounds([H, W, focal], c2w)
+        near, far = depth_bounds([H, W, focal], c2w, cloudsize=cloudsize)
         near = tf.cast(tf.reshape(near, (-1,1)), tf.float32)
         far = tf.cast(tf.reshape(far, (-1,1)), tf.float32)
 

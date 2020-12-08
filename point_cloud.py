@@ -42,12 +42,12 @@ def load_nerf(args):
     render_kwargs_fast['N_importance'] = 128
     return render_kwargs_fast
 
-def depth_bounds(hwf, c2w):
+def depth_bounds(hwf, c2w, cloudsize=1):
     epsilon = 0.10
 
     near = 1.
     H, W, focal = hwf
-    world_points = np.load("./clouds/pointcloud_down1.npy")
+    world_points = np.load(f"./clouds/pointcloud_down{cloudsize}.npy")
 
     # find directional rays from camera center towards world points
     points_o = np.broadcast_to(c2w[:3, -1], np.shape(world_points))
@@ -176,11 +176,11 @@ def depth_bounds(hwf, c2w):
 
 
     # Show near and far bounds
-    plt.imshow(near_bound, vmin=0, vmax=1)
-    plt.show()
+    # plt.imshow(near_bound, vmin=0, vmax=1)
+    # plt.show()
 
-    plt.imshow(far_bound, vmin=0, vmax=1)
-    plt.show()
+    # plt.imshow(far_bound, vmin=0, vmax=1)
+    # plt.show()
 
     # NOTE: Use to show world points relative to camera view
     # fig = plt.figure()
