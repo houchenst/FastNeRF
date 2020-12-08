@@ -82,7 +82,7 @@ def new_render():
     render_kwargs_fast['N_importance'] = 128
 
     c2w = np.eye(4)[:3,:4].astype(np.float32) # identity pose matrix
-    test = run_nerf.render(H//down, W//down, focal/down, c2w=poses[0], pc=False, **render_kwargs_fast)
+    test = run_nerf.render(H//down, W//down, focal/down, c2w=poses[0], pc=True, **render_kwargs_fast)
     img = np.clip(test[0],0,1)
     disp = test[1]
     disp = (disp - np.min(disp)) / (np.max(disp) - np.min(disp))
@@ -99,55 +99,3 @@ plt.show()
 # profiling results
 p = pstats.Stats('render_stats')
 p.sort_stats(SortKey.CUMULATIVE).print_stats(20)
-
-# CELL 3
-
-# down = 8 # trade off resolution+aliasing for render speed to make this video faster
-# frames = []
-# for i, c2w in enumerate(render_poses):
-#     if i%8==0: print(i)
-#     test = run_nerf.render(H//down, W//down, focal/down, c2w=c2w[:3,:4], **render_kwargs_fast)
-#     frames.append((255*np.clip(test[0],0,1)).astype(np.uint8))
-    
-# print('done, saving')
-# f = 'logs/fern_example/video.mp4'
-# imageio.mimwrite(f, frames, fps=30, quality=8)
-
-# from IPython.display import Video
-# Video(f, height=320)
-
-# Cell 4
-
-# from ipywidgets import interactive, widgets
-# import matplotlib.pyplot as plt
-# import numpy as np
-
-
-# def f(x, y, z):
-    
-#     c2w = tf.convert_to_tensor([
-#         [1,0,0,x],
-#         [0,1,0,y],
-#         [0,0,1,z],
-#         [0,0,0,1],
-#     ], dtype=tf.float32)
-    
-#     test = run_nerf.render(H//down, W//down, focal/down, c2w=c2w, **render_kwargs_fast)
-#     img = np.clip(test[0],0,1)
-    
-#     plt.figure(2, figsize=(20,6))
-#     plt.imshow(img)
-#     plt.show()
-    
-
-# sldr = lambda : widgets.FloatSlider(
-#     value=0.,
-#     min=-1.,
-#     max=1.,
-#     step=.01,
-# )
-
-# names = ['x', 'y', 'z']
-    
-# interactive_plot = interactive(f, **{n : sldr() for n in names})
-# interactive_plot

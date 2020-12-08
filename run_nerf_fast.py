@@ -331,11 +331,11 @@ def render_rays_with_pdf(z_vals_mid, weights, ray_batch, render_info,
     return all_ret
 
 
-def batchify_rays(rays_flat, chunk=1024*32, pc_low=None, pc_high=None, **kwargs):
+def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
     """Render rays in smaller minibatches to avoid OOM."""
     all_ret = {}
     for i in range(0, rays_flat.shape[0], chunk):
-        ret = render_rays(rays_flat[i:i+chunk], pc_low=pc_low, pc_high=pc_high, **kwargs)
+        ret = render_rays(rays_flat[i:i+chunk], **kwargs)
         for k in ret:
             if k not in all_ret:
                 all_ret[k] = []

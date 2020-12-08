@@ -42,12 +42,12 @@ def load_nerf(args):
     render_kwargs_fast['N_importance'] = 128
     return render_kwargs_fast
 
-def depth_bounds(hwf, c2w):
+def depth_bounds(hwf, c2w, cloudsize=1):
     epsilon = 0.10
 
     near = 1.
     H, W, focal = hwf
-    world_points = np.load("./newpointcloud.npy")
+    world_points = np.load(f"./clouds/pointcloud_down{cloudsize}.npy")
 
     # find directional rays from camera center towards world points
     points_o = np.broadcast_to(c2w[:3, -1], np.shape(world_points))
@@ -67,10 +67,10 @@ def depth_bounds(hwf, c2w):
 
     # find range of view in ndc coords
     gen_os, generated_rays = get_rays_np(H, W, focal, c2w)
-    print(generated_rays)
+    # print(generated_rays)
     _, generated_ndc = ndc_rays(H, W, focal, near, gen_os, generated_rays)
     generated_ndc = generated_ndc.numpy()
-    print(generated_ndc)
+    # print(generated_ndc)
 
     low_x = generated_ndc[0,0,0]
     high_x = generated_ndc[0,-1,0]
@@ -94,8 +94,8 @@ def depth_bounds(hwf, c2w):
     far_bound = np.ones((H, W)) * 2.
     pix_height = (high_y - low_y) / (H)
     pix_width = (high_x - low_x) / (W)
-    print(f'h: {pix_height}')
-    print(f'w: {pix_width}')
+    # print(f'h: {pix_height}')
+    # print(f'w: {pix_width}')
     
     # rays are center of pixels, adjust bounds accordingly
     low_x = low_x - (pix_width * 0.5)
@@ -131,8 +131,8 @@ def depth_bounds(hwf, c2w):
     # max and min local region
     translated_near = []
     translated_far = []
-    for i in range(-1,2):
-        for j in range(-1,2):
+    for i in range(-2,3):
+        for j in range(-2,3):
             # i = i-1
             # j = j-1
             near_base = np.zeros((H,W))
@@ -204,8 +204,8 @@ def make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=32):
         print(f'Working on image #{i+1}')
         # c2w = poses[i_train[i]]
         c2w = poses[i_train[i]]
-        print(f"Using {c2w}")
-        print(c2w)
+        # print(f"Using {c2w}")
+        # print(c2w)
         centers.append(c2w[np.newaxis,:3, -1])
         rays_o, rays_d = get_rays(H//down, W//down, focal/down, c2w)
 
@@ -261,8 +261,8 @@ def make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=32):
 
     all_points = np.concatenate(all_points, axis=0)
     centers = np.concatenate(centers, axis=0)
-    np.save(f"./pointcloud_down{down}.npy", all_points)
-    np.save("./camcenters.npy", centers)
+    np.save(f"./clouds/pointcloud_down{down}.npy", all_points)
+    np.save("./clouds/camcenters.npy", centers)
 
 
     # # plot
@@ -313,7 +313,12 @@ if __name__ == "__main__":
 
     render_kwargs = load_nerf(args)
 
-    make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=4)
+    # print("Num images")
+    # print(i_train.shape)
+    # make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=1)
+    for x in [2,4,8,16,32]:
+        print(f'Generating point cloud that is {x}x downsampled')
+        make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=x)
     # down = 4
     # hwf = [H//64, W//64, focal//64]
     # depth_bounds(hwf, poses[i_test[0]])
