@@ -44,11 +44,6 @@ run_nerf_fast.py, run_nerf_helpers_fast.py - Most network functionality the spar
 point_cloud.py - Methods to generate and write point clouds, as well as to read point clouds and project them to NDC space
 
 A variety of other scripts are used to produce our figures
-Our results and figures should all be in the following directories:
-```
-./output
-./
-```
 
 
 
