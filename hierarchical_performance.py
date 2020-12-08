@@ -112,8 +112,8 @@ def new_render(img_dir, fast=False,r2=128,d=3):
     else:
         plt.imsave(os.path.join(img_dir, f"FastNeRF_sparse_{d}x.png"), images[i_test[1]])
     
-    mse = run_nerf_fast_helpers_fast.img2mse(images[0], img)
-    psnr = run_nerf_fast_helpers_fast.mse2psnr(mse)
+    mse = run_nerf_helpers_fast.img2mse(images[0], img)
+    psnr = run_nerf_helpers_fast.mse2psnr(mse)
     mse = float(mse)
     psnr = float(psnr)
 
