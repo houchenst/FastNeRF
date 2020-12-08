@@ -67,10 +67,10 @@ def depth_bounds(hwf, c2w, cloudsize=1):
 
     # find range of view in ndc coords
     gen_os, generated_rays = get_rays_np(H, W, focal, c2w)
-    print(generated_rays)
+    # print(generated_rays)
     _, generated_ndc = ndc_rays(H, W, focal, near, gen_os, generated_rays)
     generated_ndc = generated_ndc.numpy()
-    print(generated_ndc)
+    # print(generated_ndc)
 
     low_x = generated_ndc[0,0,0]
     high_x = generated_ndc[0,-1,0]
@@ -94,8 +94,8 @@ def depth_bounds(hwf, c2w, cloudsize=1):
     far_bound = np.ones((H, W)) * 2.
     pix_height = (high_y - low_y) / (H)
     pix_width = (high_x - low_x) / (W)
-    print(f'h: {pix_height}')
-    print(f'w: {pix_width}')
+    # print(f'h: {pix_height}')
+    # print(f'w: {pix_width}')
     
     # rays are center of pixels, adjust bounds accordingly
     low_x = low_x - (pix_width * 0.5)
@@ -131,8 +131,8 @@ def depth_bounds(hwf, c2w, cloudsize=1):
     # max and min local region
     translated_near = []
     translated_far = []
-    for i in range(-1,2):
-        for j in range(-1,2):
+    for i in range(-2,3):
+        for j in range(-2,3):
             # i = i-1
             # j = j-1
             near_base = np.zeros((H,W))
@@ -204,8 +204,8 @@ def make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=32):
         print(f'Working on image #{i+1}')
         # c2w = poses[i_train[i]]
         c2w = poses[i_train[i]]
-        print(f"Using {c2w}")
-        print(c2w)
+        # print(f"Using {c2w}")
+        # print(c2w)
         centers.append(c2w[np.newaxis,:3, -1])
         rays_o, rays_d = get_rays(H//down, W//down, focal/down, c2w)
 

@@ -85,7 +85,7 @@ def get_data():
     plt.imsave(os.path.join(img_dir, f"GT{i_test[0]}.png"), images[i_test[0]])
     plt.imsave(os.path.join(img_dir, f"GT{i_test[1]}.png"), images[i_test[1]])
 
-    for num_samps in [8,16,32,64]:
+    for num_samps in [4,8,16,32,64]:
         print(f'Running {num_samps} sample test')
         for pc in [True, False]:
             print(f'{"not " if not pc else ""}using pc')
@@ -125,6 +125,45 @@ def get_data():
 
     with open(os.path.join(result_directory, 'results.txt'), 'w') as outfile:
         json.dump(results,outfile)
+
+def plot_data():
+    '''
+    Plot the data from results.txt in the given results directory
+    '''
+    
+    res_dir = "./cloud_size_test"
+
+    with open(os.path.join(res_dir, 'results.txt')) as json_file:
+        res = json.load(json_file)
+
+        pc_time = []
+        nopc_time = []
+        pc_psnr = []
+        nopc_psnr = []
+        for num_samps in [4,8,16,32,64]:
+            pc_time.append(res['pc'][num_samps]['time'])
+            nopc_time.append(res['no_pc'][num_samps]['time'])
+            pc_psnr.append(res['pc'][num_samps]['psnr'])
+            pc_psnr.append(res['no_pc'][num_samps]['psnr'])
+
+        fig, ax = plt.subplots(1,1)
+        fig.suptitle('PSNR vs Point Cloud Size')
+        ax.set_xlabel('Cloud Size')
+        ax.set_ylabel('PSNR')
+        plt.xscale('log')
+        ax.plot(res['cloud_size'],res['psnr'])
+        plt.savefig(os.path.join(res_dir, 'cs_psnr.png'))
+
+        fig, ax = plt.subplots(1,1)
+        fig.suptitle('PSNR vs Running Time')
+        ax.set_xlabel('Time')
+        ax.set_ylabel('PSNR')
+        plt.xscale('log')
+        ax.plot(res['time'],res['psnr'])
+        plt.savefig(os.path.join(res_dir, 'time_psnr.png'))
+
+
+
 
 def cloud_size_vs_performance():
     basedir = './logs'
@@ -190,8 +229,8 @@ def cloud_size_vs_performance():
         mse = run_nerf.img2mse(images[to_use], img)
         psnr = run_nerf.mse2psnr(mse)
         res['cloud_size'].append((17 * H * W) // (i * i))
-        res['mse'].append(mse)
-        res['psnr'].append(psnr)
+        res['mse'].append(float(mse))
+        res['psnr'].append(float(psnr))
         res['time'].append(end_time - start_time)
 
     # a = [1,2,4,8,16,32]
@@ -226,32 +265,6 @@ def cloud_size_vs_performance():
     
     with open(os.path.join(res_dir, 'results.txt'), 'w') as outfile:
         json.dump(res,outfile)
-        
-
-
-
-            
-
-
-def plot_data():
-
-    pass
-    # def img2mse(x, y): return tf.reduce_mean(tf.square(x - y))
-
-
-    # def mse2psnr(x): return -10.*tf.log(x)/tf.log(10.)
-        
-
-
-        
-        
-
-    #     c2w = np.eye(4)[:3,:4].astype(np.float32) # identity pose matrix
-        
-    #     img = np.clip(test[0],0,1)
-    #     disp = test[1]
-    #     disp = (disp - np.min(disp)) / (np.max(disp) - np.min(disp))
-    #     return img,disp
 
 
 if __name__ == "__main__":
@@ -268,4 +281,4 @@ if __name__ == "__main__":
         cloud_size_vs_performance()
 
     if args.plot:
-        plot_data
+        plot_data()
