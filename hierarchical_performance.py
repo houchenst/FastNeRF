@@ -100,7 +100,7 @@ def new_render(img_dir, fast=False,r2=128,d=3):
     c2w = poses[0]
     start_time = time.time()
     if fast:
-        test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=c2w, d=3, **render_kwargs_fast)
+        test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=c2w, d_factor=d, **render_kwargs_fast)
     else:
         test = run_nerf.render(H//down, W//down, focal/down, c2w=c2w, pc=False, **render_kwargs_fast)
     end_time = time.time()
