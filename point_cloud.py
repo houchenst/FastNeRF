@@ -313,7 +313,7 @@ if __name__ == "__main__":
 
     render_kwargs = load_nerf(args)
 
-    make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=1)
+    make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=4)
     # down = 4
     # hwf = [H//64, W//64, focal//64]
     # depth_bounds(hwf, poses[i_test[0]])
