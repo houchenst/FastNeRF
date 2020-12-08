@@ -74,8 +74,15 @@ if args.llffhold > 0:
 i_train = np.array([i for i in np.arange(int(images.shape[0])) if
                 (i not in i_test)])
 
+down = 2
 
-# CELL 2
+gt = images[i_test[0]]
+gt_down = np.zeros((H//down, W//down, 3))
+for i in gt_down.shape[0]:
+    for j in gt_down.shape[1]:
+        patch = gt[down*i:down*(i+1), (down*j):down*(j+1)]
+        patch = np.reshape(patch, (-1,3))
+        gt_down[i,j] = np.mean(patch, axis=0)
 
 # Create nerf model
 
@@ -92,7 +99,7 @@ def new_render(img_dir, fast=False,r2=128,d=3):
     pprint.pprint(render_kwargs_test)
 
 
-    down = 2
+    
     render_kwargs_fast = {k : render_kwargs_test[k] for k in render_kwargs_test}
     render_kwargs_fast['N_importance'] = r2
 
@@ -112,7 +119,7 @@ def new_render(img_dir, fast=False,r2=128,d=3):
     else:
         plt.imsave(os.path.join(img_dir, f"FastNeRF_sparse_{d}x.png"), images[i_test[1]])
     
-    mse = run_nerf_helpers_fast.img2mse(images[0], img)
+    mse = run_nerf_helpers_fast.img2mse(gt_down, img)
     psnr = run_nerf_helpers_fast.mse2psnr(mse)
     mse = float(mse)
     psnr = float(psnr)
@@ -122,7 +129,8 @@ def new_render(img_dir, fast=False,r2=128,d=3):
 
 res_dir = "./fast_results"
 img_dir = os.path.join(res_dir, "imgs")
-plt.imsave(os.path.join(img_dir, f"GT0.png"), images[i_test[0]])
+
+plt.imsave(os.path.join(img_dir, f"GT0.png"), gt_down)
 
 down_x = [1,2,3,6,9,18]
 psnr = []
