@@ -152,8 +152,9 @@ def plot_data():
         ax.set_xlabel('Samples per Ray')
         ax.set_ylabel('PSNR')
         plt.xscale('log')
-        ax.plot(num_samps,nopc_psnr)
-        ax.plot(num_samps,pc_psnr)
+        ax.plot(num_samps,nopc_psnr, label="NeRF")
+        ax.plot(num_samps,pc_psnr, label="NeRF with Point Cloud")
+        ax.legend()
         plt.savefig(os.path.join(res_dir, 'samps_psnr.png'))
 
         fig, ax = plt.subplots(1,1)
@@ -161,9 +162,9 @@ def plot_data():
         ax.set_xlabel('Time')
         ax.set_ylabel('PSNR')
         plt.xscale('log')
-        ax.plot(nopc_time,nopc_psnr)
-        ax.plot(pc_time, pc_psnr)
-
+        ax.plot(nopc_time,nopc_psnr, label="NeRF")
+        ax.plot(pc_time, pc_psnr, label="NeRF with Point Cloud")
+        ax.legend()
         plt.savefig(os.path.join(res_dir, 'time_psnr.png'))
 
 
