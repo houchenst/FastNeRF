@@ -142,10 +142,10 @@ def plot_data():
         nopc_psnr = []
         num_samps = [4,8,16,32,64]
         for num_samps in [4,8,16,32,64]:
-            pc_time.append(res['pc'][num_samps]['time'])
-            nopc_time.append(res['no_pc'][num_samps]['time'])
-            pc_psnr.append(res['pc'][num_samps]['psnr'])
-            pc_psnr.append(res['no_pc'][num_samps]['psnr'])
+            pc_time.append(res['pc'][str(num_samps)]['time'])
+            nopc_time.append(res['no_pc'][str(num_samps)]['time'])
+            pc_psnr.append(res['pc'][str(num_samps)]['psnr'])
+            pc_psnr.append(res['no_pc'][str(num_samps)]['psnr'])
 
         fig, ax = plt.subplots(1,1)
         fig.suptitle('PSNR vs Num Samples')
