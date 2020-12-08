@@ -133,7 +133,7 @@ for x in down_x:
     if x == 0:
         t, m, p = new_render(img_dir, fast=False,r2=128,d=3)
     else:
-        t, m, p = new_render(img, fast=True, r2=192, d=x)
+        t, m, p = new_render(img_dir, fast=True, r2=192, d=x)
     psnr.append(psnr)
     mse.append(mse)
     time.append(t)
