@@ -142,8 +142,8 @@ for x in down_x:
         t, m, p = new_render(img_dir, fast=False,r2=128,d=3)
     else:
         t, m, p = new_render(img_dir, fast=True, r2=192, d=x)
-    psnr.append(psnr)
-    mse.append(mse)
+    psnr.append(p)
+    mse.append(m)
     ts.append(t)
 res = {}
 res['down_x'] = [x**2 for x in down_x]
