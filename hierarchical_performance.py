@@ -150,6 +150,7 @@ res['down_x'] = [x**2 for x in down_x]
 res['psnr'] = psnr
 res['mse'] = mse
 res['time'] = ts
+print(res)
 
 with open(os.path.join(res_dir, 'results.txt'), 'w') as outfile:
         json.dump(res,outfile)
