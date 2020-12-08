@@ -320,7 +320,7 @@ def render_rays_with_pdf(z_vals_mid, weights, ray_batch, render_info,
     for batch in range(0, pts.shape[0], chunk):
         raw = network_query_fn(pts[batch:batch+chunk], viewdirs[batch:batch+chunk], run_fn)
         rgb_map, disp_map, acc_map, weights, depth_map = raw2outputs(
-            raw, z_samples, rays_d, raw_noise_std, white_bkgd)
+            raw, z_samples[batch:batch+chunk], rays_d[batch:batch+chunk], raw_noise_std, white_bkgd)
         ret = {'rgb_map': rgb_map, 'disp_map': disp_map, 'acc_map': acc_map}
         if retraw:
             ret['raw'] = raw    
