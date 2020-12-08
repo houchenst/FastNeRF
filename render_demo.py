@@ -82,7 +82,7 @@ def new_render():
     render_kwargs_fast['N_importance'] = 128
 
     c2w = np.eye(4)[:3,:4].astype(np.float32) # identity pose matrix
-    test = run_nerf.render(H//down, W//down, focal/down, c2w=poses[0], pc=False, **render_kwargs_fast)
+    test = run_nerf.render(H//down, W//down, focal/down, c2w=poses[0], pc=True, **render_kwargs_fast)
     img = np.clip(test[0],0,1)
     disp = test[1]
     disp = (disp - np.min(disp)) / (np.max(disp) - np.min(disp))

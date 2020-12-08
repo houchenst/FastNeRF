@@ -47,7 +47,7 @@ def depth_bounds(hwf, c2w):
 
     near = 1.
     H, W, focal = hwf
-    world_points = np.load("./newpointcloud.npy")
+    world_points = np.load("./clouds/pointcloud_down1.npy")
 
     # find directional rays from camera center towards world points
     points_o = np.broadcast_to(c2w[:3, -1], np.shape(world_points))
@@ -176,11 +176,11 @@ def depth_bounds(hwf, c2w):
 
 
     # Show near and far bounds
-    # plt.imshow(near_bound, vmin=0, vmax=1)
-    # plt.show()
+    plt.imshow(near_bound, vmin=0, vmax=1)
+    plt.show()
 
-    # plt.imshow(far_bound, vmin=0, vmax=1)
-    # plt.show()
+    plt.imshow(far_bound, vmin=0, vmax=1)
+    plt.show()
 
     # NOTE: Use to show world points relative to camera view
     # fig = plt.figure()
@@ -261,8 +261,8 @@ def make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=32):
 
     all_points = np.concatenate(all_points, axis=0)
     centers = np.concatenate(centers, axis=0)
-    np.save(f"./pointcloud_down{down}.npy", all_points)
-    np.save("./camcenters.npy", centers)
+    np.save(f"./clouds/pointcloud_down{down}.npy", all_points)
+    np.save("./clouds/camcenters.npy", centers)
 
 
     # # plot
@@ -315,7 +315,10 @@ if __name__ == "__main__":
 
     # print("Num images")
     # print(i_train.shape)
-    make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=1)
+    # make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=1)
+    for x in [2,4,8,16,32]:
+        print(f'Generating point cloud that is {x}x downsampled')
+        make_point_cloud(hwf, poses, i_train, args, render_kwargs, down=x)
     # down = 4
     # hwf = [H//64, W//64, focal//64]
     # depth_bounds(hwf, poses[i_test[0]])
