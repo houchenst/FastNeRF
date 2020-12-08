@@ -137,6 +137,7 @@ psnr = []
 mse = []
 ts = []
 for x in down_x:
+    break
     print(f"Running with {x}x reduced sampling")
     if x == 1:
         t, m, p = new_render(img_dir, fast=False,r2=128,d=3)
@@ -154,6 +155,8 @@ print(res)
 
 with open(os.path.join(res_dir, 'results.txt'), 'w') as outfile:
         json.dump(res,outfile)
+
+
         
 fig, ax = plt.subplots(1,1)
 fig.suptitle('Accuracy vs Sampling Rate')
@@ -173,7 +176,7 @@ plt.xscale('log')
 ax.plot(res['time'][1:],res['psnr'][1:], label="Fast NeRF")
 ax.scatter([res['time'][0]], res['psnr'][0], c="red", label="NeRF")
 ax.legend()
-plt.savefix(os.path.join(res_dir, 'time_accuracy.png'))
+plt.savefig(os.path.join(res_dir, 'time_accuracy.png'))
 
 
 
