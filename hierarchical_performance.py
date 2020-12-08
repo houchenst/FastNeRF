@@ -78,8 +78,8 @@ down = 2
 
 gt = images[i_test[0]]
 gt_down = np.zeros((H//down, W//down, 3))
-for i in gt_down.shape[0]:
-    for j in gt_down.shape[1]:
+for i in range(gt_down.shape[0]):
+    for j in range(gt_down.shape[1]):
         patch = gt[down*i:down*(i+1), (down*j):down*(j+1)]
         patch = np.reshape(patch, (-1,3))
         gt_down[i,j] = np.mean(patch, axis=0)
