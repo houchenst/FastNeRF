@@ -10,10 +10,13 @@ import json
 import random
 import time
 import pprint
+import argparse
 
 import matplotlib.pyplot as plt
 
 import run_nerf
+import run_nerf_fast
+import point_cloud
 
 from load_llff import load_llff_data
 from load_deepvoxels import load_dv_data
@@ -64,7 +67,7 @@ else:
 
 # Create nerf model
 
-def new_render():
+def new_render(pc=False,sparse=False, down=16):
     _, render_kwargs_test, start, grad_vars, models = run_nerf.create_nerf(args)
 
     bds_dict = {
@@ -77,25 +80,57 @@ def new_render():
     pprint.pprint(render_kwargs_test)
 
 
-    down = 16
     render_kwargs_fast = {k : render_kwargs_test[k] for k in render_kwargs_test}
     render_kwargs_fast['N_importance'] = 128
 
-    c2w = np.eye(4)[:3,:4].astype(np.float32) # identity pose matrix
-    test = run_nerf.render(H//down, W//down, focal/down, c2w=poses[0], pc=True, **render_kwargs_fast)
+    # c2w = np.eye(4)[:3,:4].astype(np.float32) # identity pose matrix
+    if not sparse:
+        test = run_nerf.render(H//down, W//down, focal/down, c2w=poses[0], pc=pc, cloudsize=16, **render_kwargs_fast)
+    else:
+        test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=poses[0], **render_kwargs_fast)
     img = np.clip(test[0],0,1)
     disp = test[1]
     disp = (disp - np.min(disp)) / (np.max(disp) - np.min(disp))
     return img,disp
 
 
-# profile rendering
-cProfile.run('img,disp = new_render()', 'render_stats')
+# # profile rendering
+# cProfile.run('img,disp = new_render()', 'render_stats')
 
-# show results
-plt.imshow(img)
-plt.show()
+# # show results
+# plt.imshow(img)
+# plt.show()
 
-# profiling results
-p = pstats.Stats('render_stats')
-p.sort_stats(SortKey.CUMULATIVE).print_stats(20)
+# # profiling results
+# p = pstats.Stats('render_stats')
+# p.sort_stats(SortKey.CUMULATIVE).print_stats(20)
+
+if __name__ == "__main__":
+    parser2 = argparse.ArgumentParser(description='Show FastNeRF rendering in action')
+    parser2.add_argument('--vanilla',  action='store_true', help='renders using vanilla nerf')
+    parser2.add_argument('--cloud', action='store_true', help='renders by limiting the depth range using a point cloud')
+    parser2.add_argument('--interpolate', action='store_true', help='renders by sparsely (1/9) sampling the first pass and interpolating pdfs')
+    parser2.add_argument('--cloud_viz', action='store_true', help='Visualizes the point cloud and shows depth lower and upper bounds')
+    parser2.add_argument('--down', type=int, default=12, help='Downsampling factor for the novel view resolution. 16 recommended unless on GPU')
+    args2 = parser2.parse_args()
+
+    down = 16
+    if args2.down is not None:
+        down = args2.down
+
+    if args2.vanilla:
+        img, disp = new_render(down=down)
+        plt.imshow(img)
+        plt.show()
+    if args2.cloud:
+        img, disp = new_render(pc=True, down=down)
+        plt.imshow(img)
+        plt.show()
+    if args2.interpolate:
+        img, disp = new_render(sparse=True, down=down)
+        plt.imshow(img)
+        plt.show()
+
+    if args2.cloud_viz:
+        point_cloud.depth_bounds([H//down,W//down,focal/down], poses[0], cloudsize=16, bounds=True, show_view=True)
+        

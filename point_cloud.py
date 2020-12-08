@@ -42,7 +42,7 @@ def load_nerf(args):
     render_kwargs_fast['N_importance'] = 128
     return render_kwargs_fast
 
-def depth_bounds(hwf, c2w, cloudsize=1):
+def depth_bounds(hwf, c2w, cloudsize=16, bounds=False, show_view=False):
     epsilon = 0.10
 
     near = 1.
@@ -176,17 +176,19 @@ def depth_bounds(hwf, c2w, cloudsize=1):
 
 
     # Show near and far bounds
-    # plt.imshow(near_bound, vmin=0, vmax=1)
-    # plt.show()
+    if bounds:
+        plt.imshow(near_bound, vmin=0, vmax=1)
+        plt.show()
 
-    # plt.imshow(far_bound, vmin=0, vmax=1)
-    # plt.show()
+        plt.imshow(far_bound, vmin=0, vmax=1)
+        plt.show()
 
     # NOTE: Use to show world points relative to camera view
-    # fig = plt.figure()
-    # ax = fig.add_subplot(111, projection='3d')
-    # plot_scene(ax, world_points, [c2w], [hwf])
-    # plt.show()
+    if show_view:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        plot_scene(ax, world_points, [c2w], [hwf])
+        plt.show()
     return (near_bound, far_bound)
 
 

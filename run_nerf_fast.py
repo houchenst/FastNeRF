@@ -396,7 +396,7 @@ def render(H, W, focal,
     
 
     # downsampling test
-    d_factor = 3
+    # d_factor = 3
     # xs = np.array([range(0,W,d_factor),]*(H // d_factor))
     # ys = np.array([range(0,H,d_factor),]*(W // d_factor)).transpose()
     # ys = ys * W
