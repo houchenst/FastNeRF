@@ -137,7 +137,6 @@ psnr = []
 mse = []
 ts = []
 for x in down_x:
-    break
     print(f"Running with {x}x reduced sampling")
     if x == 1:
         t, m, p = new_render(img_dir, fast=False,r2=128,d=3)
@@ -155,7 +154,6 @@ print(res)
 
 with open(os.path.join(res_dir, 'results.txt'), 'w') as outfile:
         json.dump(res,outfile)
-
 
         
 fig, ax = plt.subplots(1,1)
