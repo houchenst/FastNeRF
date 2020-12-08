@@ -262,7 +262,7 @@ def render_rays_with_pdf(z_vals_mid, weights, ray_batch, render_info,
     '''
     Render a ray given a known pdf
     '''
-    NUM_SAMPLES = 128
+    NUM_SAMPLES = N_importance
 
     H, W, y_offset, x_offset, d_factor = render_info
     
@@ -347,7 +347,7 @@ def batchify_rays(rays_flat, chunk=1024*32, **kwargs):
 
 def render(H, W, focal,
            chunk=1024*32, rays=None, c2w=None, ndc=True,
-           near=0., far=1.,
+           near=0., far=1., d_factor=3,
            use_viewdirs=False, c2w_staticcam=None,
            **kwargs):
     """Render rays
@@ -406,12 +406,16 @@ def render(H, W, focal,
 
     # downsampling with all start shifts
     # Shape: group# x group height x group width x 3
-    ray_groups_o = np.zeros((d_factor**2, H//d_factor, W//d_factor, 3))
-    ray_groups_d = np.zeros((d_factor**2, H//d_factor, W//d_factor, 3))
+    
+    small_h = H//d_factor + (H % d_factor > 0)
+    small_w = W//d_factor + (W % d_factor > 0)
+
+    ray_groups_o = np.zeros((d_factor**2, small_h, small_w, 3))
+    ray_groups_d = np.zeros((d_factor**2, small_h, small_w, 3))
     
     # Shape: group# x group height x group width x 1
-    near_groups = near * np.ones((d_factor**2, H//d_factor, W//d_factor, 1))
-    far_groups = far * np.ones((d_factor**2, H//d_factor, W//d_factor, 1))
+    near_groups = near * np.ones((d_factor**2, small_h, small_w, 1))
+    far_groups = far * np.ones((d_factor**2, small_h, small_w, 1))
 
     # TODO: account for case where H and W aren't multiples of d_factor
     for i in range(d_factor):
@@ -441,8 +445,10 @@ def render(H, W, focal,
                 # put rays into larger tensor
                 # indexing accounts for the height/width being either H//2 or H//2 + 1
                 # depending on the start index
-                ray_groups_o[i*d_factor + j, :H//d_factor, :W//d_factor, :] = rays_g_o
-                ray_groups_d[i*d_factor + j, :H//d_factor, :W//d_factor, :] = rays_g_d
+                h_size = small_h - (H%d_factor < (i+1) and (not H%d_factor == 0))
+                w_size = small_w - (W%d_factor < (j+1) and (not W%d_factor == 0))
+                ray_groups_o[i*d_factor + j, :h_size, :w_size, :] = rays_g_o
+                ray_groups_d[i*d_factor + j, :h_size, :w_size, :] = rays_g_d
 
     ray_groups_o = tf.convert_to_tensor(ray_groups_o, dtype=tf.float32)
     ray_groups_d = tf.convert_to_tensor(ray_groups_d, dtype=tf.float32)
@@ -537,7 +543,11 @@ def render(H, W, focal,
 
         # add to the merged results
         for k in all_ret:
-            merged_ret[k][(x//d_factor)::d_factor, (x%d_factor)::d_factor, ...] = all_ret[k]
+            i = x // d_factor
+            j = x % d_factor
+            h_size = small_h - (H%d_factor < (i+1) and (not H%d_factor == 0))
+            w_size = small_w - (W%d_factor < (j+1) and (not W%d_factor == 0))
+            merged_ret[k][i::d_factor, j::d_factor, ...] = all_ret[k][:h_size, :w_size]
 
 
     k_extract = ['rgb_map', 'disp_map', 'acc_map']

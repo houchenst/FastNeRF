@@ -14,6 +14,8 @@ import pprint
 import matplotlib.pyplot as plt
 
 import run_nerf_fast
+import run_nerf_helpers_fast
+import run_nerf
 
 from load_llff import load_llff_data
 from load_deepvoxels import load_dv_data
@@ -77,7 +79,7 @@ i_train = np.array([i for i in np.arange(int(images.shape[0])) if
 
 # Create nerf model
 
-def new_render():
+def new_render(img_dir, fast=False,r2=128,d=3):
     _, render_kwargs_test, start, grad_vars, models = run_nerf_fast.create_nerf(args)
 
     bds_dict = {
@@ -90,81 +92,78 @@ def new_render():
     pprint.pprint(render_kwargs_test)
 
 
-    down = 4
+    down = 1
     render_kwargs_fast = {k : render_kwargs_test[k] for k in render_kwargs_test}
-    render_kwargs_fast['N_importance'] = 128
+    render_kwargs_fast['N_importance'] = r2
 
     # c2w = np.eye(4)[:3,:4].astype(np.float32) # identity pose matrix
     c2w = poses[0]
-    test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=c2w, **render_kwargs_fast)
-    print(test)
+    start_time = time.time()
+    if fast:
+        test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=c2w, d=3, **render_kwargs_fast)
+    else:
+        test = run_nerf.render(H//down, W//down, focal/down, c2w=c2w, pc=False, **render_kwargs_fast)
+    end_time = time.time()
+    net = end_time - start_time
+
     img = np.clip(test[0],0,1)
-    disp = test[1]
-    disp = (disp - np.min(disp)) / (np.max(disp) - np.min(disp))
-    acc_alpha = test[2]
-    return img,disp,acc_alpha
-
-
-# profile rendering
-cProfile.run('img,disp, acc_alpha = new_render()', 'render_stats')
-# img, disp,acc_alpha = new_render()
-
-# show results
-plt.imshow(img)
-plt.show()
-
-# profiling results
-p = pstats.Stats('render_stats')
-p.sort_stats(SortKey.CUMULATIVE).print_stats(20)
-
-# CELL 3
-
-# down = 8 # trade off resolution+aliasing for render speed to make this video faster
-# frames = []
-# for i, c2w in enumerate(render_poses):
-#     if i%8==0: print(i)
-#     test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=c2w[:3,:4], **render_kwargs_fast)
-#     frames.append((255*np.clip(test[0],0,1)).astype(np.uint8))
+    if not fast:
+        plt.imsave(os.path.join(img_dir, f"NeRF_render.png"), images[i_test[1]])
+    else:
+        plt.imsave(os.path.join(img_dir, f"FastNeRF_sparse_{d}x.png"), images[i_test[1]])
     
-# print('done, saving')
-# f = 'logs/fern_example/video.mp4'
-# imageio.mimwrite(f, frames, fps=30, quality=8)
+    mse = run_nerf_fast_helpers_fast.img2mse(images[0], img)
+    psnr = run_nerf_fast_helpers_fast.mse2psnr(mse)
+    mse = float(mse)
+    psnr = float(psnr)
 
-# from IPython.display import Video
-# Video(f, height=320)
-
-# Cell 4
-
-# from ipywidgets import interactive, widgets
-# import matplotlib.pyplot as plt
-# import numpy as np
+    return net, mse, psnr
 
 
-# def f(x, y, z):
-    
-#     c2w = tf.convert_to_tensor([
-#         [1,0,0,x],
-#         [0,1,0,y],
-#         [0,0,1,z],
-#         [0,0,0,1],
-#     ], dtype=tf.float32)
-    
-#     test = run_nerf_fast.render(H//down, W//down, focal/down, c2w=c2w, **render_kwargs_fast)
-#     img = np.clip(test[0],0,1)
-    
-#     plt.figure(2, figsize=(20,6))
-#     plt.imshow(img)
-#     plt.show()
-    
+res_dir = "./fast_results"
+img_dir = os.path.join(res_dir, "imgs")
+plt.imsave(os.path.join(img_dir, f"GT0.png"), images[i_test[0]])
 
-# sldr = lambda : widgets.FloatSlider(
-#     value=0.,
-#     min=-1.,
-#     max=1.,
-#     step=.01,
-# )
+down_x = [1,2,3,4,6,9,12,18]
+psnr = []
+mse = []
+time = []
+for x in down_x:
+    if x == 0:
+        t, m, p = new_render(img_dir, fast=False,r2=128,d=3)
+    else:
+        t, m, p = new_render(img, fast=True, r2=192, d=x)
+    psnr.append(psnr)
+    mse.append(mse)
+    time.append(t)
+res = {}
+res['down_x'] = [x**2 for x in down_x]
+res['psnr'] = psnr
+res['mse'] = mse
+res['time'] = time
 
-# names = ['x', 'y', 'z']
-    
-# interactive_plot = interactive(f, **{n : sldr() for n in names})
-# interactive_plot
+with open(os.path.join(res_dir, 'results.txt'), 'w') as outfile:
+        json.dump(res,outfile)
+        
+fig, ax = plt.subplots(1,1)
+fig.suptitle('Accuracy vs Sampling Rate')
+ax.set_xlabel('Sampling Rate (1/x sampled)')
+ax.set_ylabel('PSNR')
+plt.xscale('log')
+ax.plot(res['down_x'][1:],res['psnr'][1:], label="Fast NeRF")
+ax.scatter([res['down_x'][0]], res['psnr'][0], c="red", label="NeRF")
+ax.legend()
+plt.savefig(os.path.join(res_dir, 'sampling_rate_accuracy.png'))
+
+fig, ax = plt.subplots(1,1)
+fig.suptitle('Accuracy vs Time')
+ax.set_xlabel('Running Time (seconds)')
+ax.set_ylabel('PSNR')
+plt.xscale('log')
+ax.plot(res['time'][1:],res['psnr'][1:], label="Fast NeRF")
+ax.scatter([res['time'][0]], res['psnr'][0], c="red", label="NeRF")
+ax.legend()
+plt.savefix(os.path.join(res_dir, 'time_accuracy.png'))
+
+
+
