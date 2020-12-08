@@ -140,7 +140,7 @@ def plot_data():
         nopc_time = []
         pc_psnr = []
         nopc_psnr = []
-        num_samps = [4,8,16,32,64]
+        all_samps = [4,8,16,32,64]
         for num_samps in [4,8,16,32,64]:
             pc_time.append(res['pc'][str(num_samps)]['time'])
             nopc_time.append(res['no_pc'][str(num_samps)]['time'])
@@ -152,14 +152,14 @@ def plot_data():
         ax.set_xlabel('Samples per Ray')
         ax.set_ylabel('PSNR')
         plt.xscale('log')
-        ax.plot(num_samps,nopc_psnr, label="NeRF")
-        ax.plot(num_samps,pc_psnr, label="NeRF with Point Cloud")
+        ax.plot(all_samps,nopc_psnr, label="NeRF")
+        ax.plot(all_samps,pc_psnr, label="NeRF with Point Cloud")
         ax.legend()
         plt.savefig(os.path.join(res_dir, 'samps_psnr.png'))
 
         fig, ax = plt.subplots(1,1)
         fig.suptitle('PSNR vs Running Time')
-        ax.set_xlabel('Time')
+        ax.set_xlabel('Time (seconds)')
         ax.set_ylabel('PSNR')
         plt.xscale('log')
         ax.plot(nopc_time,nopc_psnr, label="NeRF")
