@@ -182,8 +182,9 @@ def cloud_size_vs_performance():
     res['time'] = []
 
     for i in [1,2,4,8,16,32]:
+        print(f'Running with cloud downsampled {i}x')
         start_time = time.time()
-        ret_vals = run_nerf.render(H, W, focal, c2w=poses[to_use], pc=pc, cloudsize=i, **render_kwargs)
+        ret_vals = run_nerf.render(H, W, focal, c2w=poses[to_use], pc=True, cloudsize=i, **render_kwargs)
         end_time = time.time()
         img = np.clip(ret_vals[0],0,1)
         mse = run_nerf.img2mse(images[to_use], img)
