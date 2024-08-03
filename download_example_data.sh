@@ -1,6 +1,6 @@
-wget https://people.eecs.berkeley.edu/~bmild/nerf/tiny_nerf_data.npz --no-check-certificate
+wget http://cseweb.ucsd.edu/~viscomp/projects/LF/papers/ECCV20/nerf/tiny_nerf_data.npz --no-check-certificate
 mkdir -p data
 cd data
-wget https://people.eecs.berkeley.edu/~bmild/nerf/nerf_example_data.zip --no-check-certificate
+wget https://cseweb.ucsd.edu//~viscomp/projects/LF/papers/ECCV20/nerf/nerf_example_data.zip --no-check-certificate
 unzip nerf_example_data.zip
 cd ..
